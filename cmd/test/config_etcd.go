@@ -18,6 +18,16 @@ func (autoTypeConfigServer) Port() paths.Path[int] {
 	return paths.NewPath("wagtest/Config/Server/Port", codecs.NewJsonCodec[int]())
 }
 
+// Test() KV should contain type string
+func (autoTypeConfigServer) Test() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/Server/Test", codecs.NewJsonCodec[string]())
+}
+
+// Toaster() KV should contain type string
+func (autoTypeConfigServer) Toaster() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/Server/Toaster", codecs.NewJsonCodec[string]())
+}
+
 type autoTypeConfigTLS struct{}
 
 // CertFile() KV should contain type string

@@ -1,6 +1,13 @@
 package config
 
+type somethingElse struct {
+	Test    string
+	Toaster string
+}
+
 type ServerConfig struct {
+	somethingElse
+
 	Host string
 	Port int
 }

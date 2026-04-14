@@ -149,7 +149,7 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 			continue
 		}
 
-		if !field.Exported() {
+		if !field.Exported() && !field.Anonymous() {
 			continue
 		}
 
