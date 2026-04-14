@@ -29,10 +29,12 @@ func (p Path[T]) Codec() codecs.Codec[T] {
 
 func (p Path[T]) Key() string { return p.key }
 
-func (p Path[T]) Get(ctx context.Context, cli *clientv3.Client) (T, error) {
+// Get a single key -> value, do not add Op WithPrefix in here use the properly generated map types :)
+func (p Path[T]) Get(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (T, error) {
+
 	var zero T
 
-	resp, err := cli.Get(ctx, p.key)
+	resp, err := cli.Get(ctx, p.key, opts...)
 	if err != nil {
 		return zero, err
 	}
@@ -42,16 +44,21 @@ func (p Path[T]) Get(ctx context.Context, cli *clientv3.Client) (T, error) {
 	return p.codec.Decode(resp.Kvs[0].Value)
 }
 
-func (p Path[T]) Put(ctx context.Context, cli *clientv3.Client, val T) error {
+func (p Path[T]) Put(ctx context.Context, cli *clientv3.Client, val T, opts ...clientv3.OpOption) error {
 	data, err := p.codec.Encode(val)
 	if err != nil {
 		return err
 	}
-	_, err = cli.Put(ctx, p.key, string(data))
+	_, err = cli.Put(ctx, p.key, string(data), opts...)
 	return err
 }
 
-func (p Path[T]) Delete(ctx context.Context, cli *clientv3.Client) error {
-	_, err := cli.Delete(ctx, p.key)
-	return err
+func (p Path[T]) Delete(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (int64, error) {
+
+	res, err := cli.Delete(ctx, p.key, opts...)
+	if err != nil {
+		return 0, err
+	}
+
+	return res.Deleted, err
 }

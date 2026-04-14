@@ -142,7 +142,7 @@ func TestMapPath_List(t *testing.T) {
 	}
 	seedMap(t, ctx, cli, m, want)
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -163,7 +163,7 @@ func TestMapPath_List_Empty(t *testing.T) {
 
 	m := paths.NewMapPath("wag/Acls/ListEmpty", codecs.NewJsonCodec[string]())
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -187,7 +187,7 @@ func TestMapPath_Delete(t *testing.T) {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after Delete() error = %v", err)
 	}
@@ -223,7 +223,7 @@ func TestMapPath_Put(t *testing.T) {
 		"viewers": viewiersObject,
 	})
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after Put() error = %v", err)
 	}
@@ -255,7 +255,7 @@ func TestMapPath_DeleteAll(t *testing.T) {
 		t.Errorf("DeleteAll() deleted %d, want 3", deleted)
 	}
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after DeleteAll() error = %v", err)
 	}
@@ -364,8 +364,13 @@ func TestMapPath_Watch_Delete(t *testing.T) {
 
 	ch := m.Watch(ctx, cli)
 
-	if err := m.Key("alpha").Delete(ctx, cli); err != nil {
+	num, err := m.Key("alpha").Delete(ctx, cli)
+	if err != nil {
 		t.Fatalf("Delete() error = %v", err)
+	}
+
+	if num != 1 {
+		t.Fatal("removed a different number of keys than expected: ", num)
 	}
 
 	ev := <-ch

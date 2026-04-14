@@ -43,13 +43,18 @@ func (m MapSlicePath[V]) Key(k string) MapPath[V] {
 }
 
 // List reads the entire two-level structure
-func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client) (map[string]map[string]V, error) {
-	resp, err := cli.Get(ctx, m.prefix, clientv3.WithPrefix())
+func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, map[string]map[string]V, error) {
+
+	options := []clientv3.OpOption{clientv3.WithPrefix()}
+	options = append(options, opts...)
+
+	resp, err := cli.Get(ctx, m.prefix, options...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	result := make(map[string]map[string]V, len(resp.Kvs))
+	order := make([]string, 0, len(resp.Kvs))
 	for _, kv := range resp.Kvs {
 		rel := strings.TrimPrefix(string(kv.Key), m.prefix+"/")
 		parts := strings.SplitN(rel, "/", 2)
@@ -61,18 +66,23 @@ func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client) (map[st
 
 		v, err := m.codec.Decode(kv.Value)
 		if err != nil {
-			return nil, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+			return nil, nil, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
 		}
 
 		if result[outerKey] == nil {
 			result[outerKey] = make(map[string]V)
 		}
 		result[outerKey][innerKey] = v
+		order = append(order, outerKey)
 	}
-	return result, nil
+	return order, result, nil
 }
 
-func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) error {
-	_, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
-	return err
+func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) (int64, error) {
+	resp, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.Deleted, nil
 }

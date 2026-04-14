@@ -57,31 +57,43 @@ func (m MapPath[V]) Keys(ctx context.Context, cli *clientv3.Client, opts ...clie
 	return result, nil
 }
 
-func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (map[string]V, error) {
+// List returns the keys of the value in the order returned by etcd
+// and then a map of those keys to values
+func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, map[string]V, error) {
 	options := []clientv3.OpOption{clientv3.WithPrefix()}
 	options = append(options, opts...)
 
 	resp, err := cli.Get(ctx, m.prefix, options...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	result := make(map[string]V, len(resp.Kvs))
+	keys := make([]string, 0, len(resp.Kvs))
 	for _, kv := range resp.Kvs {
 		// Strip prefix + trailing slash to get the map key
 		k := strings.TrimPrefix(string(kv.Key), m.prefix+"/")
 		v, err := m.codec.Decode(kv.Value)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		result[k] = v
+		keys = append(keys, k)
 	}
 
-	return result, nil
+	return keys, result, nil
 }
 
 func (m MapPath[V]) Delete(ctx context.Context, cli *clientv3.Client, k string) error {
-	_, err := cli.Delete(ctx, filepath.Join(m.prefix, k))
+	resp, err := cli.Delete(ctx, filepath.Join(m.prefix, k))
+	if err != nil {
+		return err
+	}
+
+	if resp.Deleted == 0 {
+		return ErrNotFound
+	}
+
 	return err
 }
 

@@ -30,7 +30,7 @@ func TestMapSlicePath_List_Empty(t *testing.T) {
 
 	m := paths.NewMapSlicePath("wag/Thing/Empty", codecs.NewJsonCodec[string]())
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -59,7 +59,7 @@ func TestMapSlicePath_List(t *testing.T) {
 		}
 	}
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestMapSlicePath_List_SkipsInvalidDepth(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	got, err := m.List(ctx, cli)
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -128,11 +128,16 @@ func TestMapSlicePath_DeleteAll(t *testing.T) {
 		}
 	}
 
-	if err := m.DeleteAll(ctx, cli); err != nil {
+	num, err := m.DeleteAll(ctx, cli)
+	if err != nil {
 		t.Fatalf("DeleteAll() error = %v", err)
 	}
 
-	got, err := m.List(ctx, cli)
+	if num != 3 {
+		t.Errorf("DeleteAll() deleted %d keys, want %d", num, 2)
+	}
+
+	_, got, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after DeleteAll() error = %v", err)
 	}
@@ -148,8 +153,10 @@ func TestMapSlicePath_DeleteAll_Empty(t *testing.T) {
 
 	m := paths.NewMapSlicePath("wag/Thing/DeleteAllEmpty", codecs.NewJsonCodec[string]())
 
-	if err := m.DeleteAll(ctx, cli); err != nil {
+	if num, err := m.DeleteAll(ctx, cli); err != nil {
 		t.Fatalf("DeleteAll() on empty prefix error = %v", err)
+	} else if num != 0 {
+		t.Errorf("DeleteAll() on empty prefix deleted %d keys, want 0", num)
 	}
 }
 
@@ -165,7 +172,7 @@ func TestMapSlicePath_Key_NestedList(t *testing.T) {
 	}
 
 	// Use the inner MapPath directly to list
-	inner, err := m.Key("outer").List(ctx, cli)
+	_, inner, err := m.Key("outer").List(ctx, cli)
 	if err != nil {
 		t.Fatalf("inner List() error = %v", err)
 	}
