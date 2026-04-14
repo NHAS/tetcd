@@ -272,12 +272,36 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 			jen.Var().Id(root.name).Op("=").Id(typeName).Values(),
 		)
 	} else {
-		// Non-root nodes with children get a Get method
+		// Non-root nodes with children get a Get method.
+		// If this node is an anonymous struct, emit a concrete type alias first.
 		if len(root.children) > 0 {
+			if root.namedType == nil {
+				if _, ok := root.typeDef.(*types.Struct); ok {
+					typeName, _ := deriveConcreteTypeName(root, path)
+					result = append(result,
+						jen.Type().Add(typeName).Add(typeExpr(root.typeDef)),
+					)
+				}
+			}
 			result = append(result, generateGetAll(root, path)...)
 		}
 	}
 	return result
+}
+
+func deriveConcreteTypeName(n *node, path string) (jen.Code, string) {
+	if n.namedType != nil {
+		typeName := n.namedType.Obj().Name()
+		return jen.Qual(PkgPath, typeName), typeName
+	}
+	// Anonymous struct: refers to the generated autoConcrete* type
+	prefix := ""
+	if path != "" {
+		prefix = filepath.Base(path)
+	}
+
+	constructedTypeName := "autoResult" + prefix + n.name
+	return jen.Id(constructedTypeName), constructedTypeName
 }
 
 func generateGetAll(n *node, path string) []jen.Code {
@@ -288,11 +312,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 
 	autoTypeName := structTypeName(n.name, path)
 
-	var concreteTypeName string
-
-	if n.namedType != nil {
-		concreteTypeName = n.namedType.Obj().Name()
-	}
+	returnType, returnTypeStr := deriveConcreteTypeName(n, path)
 
 	var batches [][]leafWithPath
 	for i := 0; i < len(leaves); i += maxOpsPerTxn {
@@ -307,12 +327,13 @@ func generateGetAll(n *node, path string) []jen.Code {
 	}
 
 	for batchIdx, batch := range batches {
-		batchStmts, handleNames := buildBatchStatementsFromMethods(batchIdx, batch, len(batches), n)
+		batchStmts, handleNames := buildBatchStatementsFromMethods(batchIdx, batch, path, len(batches), n)
 		body = append(body, batchStmts...)
 
 		for i, lp := range batch {
 			handleName := handleNames[i]
-			fieldAccess := buildConcreteFieldAccess(lp, n)
+			log.Println(path)
+			fieldAccess := buildFieldAccess(jen.Empty(), lp, path, n, false)
 
 			valueMethod := "Value"
 			if !lp.leaf.single && !lp.leaf.isCompressed {
@@ -338,7 +359,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 
 	body = append(body, jen.Return(jen.Id("result"), jen.Nil()))
 
-	fn := jen.Commentf("Get fetches all fields of %s in one or more transactions pinned to the same etcd revision.", concreteTypeName)
+	fn := jen.Commentf("Get fetches all fields of %s in one or more transactions pinned to the same etcd revision.", returnTypeStr)
 	fn2 := jen.Func().
 		Params(jen.Id("a").Id(autoTypeName)).
 		Id("Get").
@@ -346,7 +367,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 			jen.Id("ctx").Qual("context", "Context"),
 			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
 		).
-		Params(jen.Id("result").Qual(PkgPath, concreteTypeName), jen.Id("err").Error()).
+		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
 		Block(body...)
 
 	return []jen.Code{fn, fn2}
@@ -354,7 +375,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 
 // buildBatchStatementsFromMethods emits the txn setup, GetTx calls using the
 // generated accessor methods on the autoType receiver, and Commit for one batch.
-func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, totalBatches int, root *node) ([]jen.Code, []string) {
+func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path string, totalBatches int, root *node) ([]jen.Code, []string) {
 	var stmts []jen.Code
 	var handleNames []string
 
@@ -372,7 +393,7 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, totalBa
 		// Build the method call chain: a.Sub().Leaf()
 		// Start from "a" (the receiver), then call each intermediate node's accessor,
 		// then the leaf accessor.
-		accessorChain := buildAccessorChain(lp, root)
+		accessorChain := buildFieldAccess(jen.Id("a"), lp, path, root, true)
 
 		txFunc := "GetTx"
 		if !lp.leaf.single && !lp.leaf.isCompressed {
@@ -382,11 +403,11 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, totalBa
 				switch ut.Elem().Underlying().(type) {
 
 				case *types.Slice, *types.Array, *types.Map:
-					txFunc = "ListNestedTx"
+					txFunc = "DynamicCollectionTx"
 				default:
 				}
 			default:
-				log.Println(handleVar, ut)
+
 			}
 
 		}
@@ -424,69 +445,28 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, totalBa
 	return stmts, handleNames
 }
 
-// buildAccessorChain constructs a jen expression like:
-//
-//	a.Server().Host()
-//
-// by walking from root down through the intermediate nodes to the leaf.
-// lp.path is the path *above* lp.parentNode (e.g. "Config" for a leaf in Config.Server).
-// Intermediate struct fields are accessed as methods on the autoType receiver.
-// The final leaf is also called as a method.
-func buildAccessorChain(lp leafWithPath, root *node) jen.Code {
-	rel := lp.path
-	rel = strings.TrimPrefix(rel, root.name)
-	rel = strings.TrimPrefix(rel, string(filepath.Separator))
-
-	// intermediates are struct field accesses (not calls), only the final leaf is a method call
-	var intermediates []string
-	if rel != "" {
-		intermediates = strings.Split(rel, string(filepath.Separator))
-	}
-
-	// If parentNode is the root itself, there are no intermediate field accesses.
-	// If parentNode is a sub-struct, it is a field access, and only the leaf is a method call.
-	code := jen.Id("a")
-
-	if lp.parentNode.name != root.name {
-		// Walk intermediate struct fields (between root and parentNode)
-		for _, p := range intermediates {
-			code = code.Dot(p)
-		}
-		// parentNode is a struct field access
-		code = code.Dot(lp.parentNode.name)
-	}
-
-	// leaf is always a method call
-	code = code.Dot(lp.leaf.name).Call()
-
-	return code
-}
-
-// buildConcreteFieldAccess returns the jen field selector chain to reach a leaf
+// buildFieldAccess returns the jen field selector chain to reach a leaf
 // on the concrete result struct (e.g. .Server.Host for result.Server.Host).
 // lp.path is the path *above* lp.parentNode (e.g. "Config" for Config.Server.Host).
-func buildConcreteFieldAccess(lp leafWithPath, root *node) jen.Code {
-	rel := lp.path
+func buildFieldAccess(codeRoot *jen.Statement, lp leafWithPath, path string, root *node, isFunc bool) jen.Code {
+	// lp.path is the full path including parentNode, e.g. "Config/TLS/NestedInTls"
+	// Strip the root name prefix to get relative segments.
+	rel := strings.TrimPrefix(lp.path, path)
+	rel = strings.TrimPrefix(rel, string(filepath.Separator))
 	rel = strings.TrimPrefix(rel, root.name)
 	rel = strings.TrimPrefix(rel, string(filepath.Separator))
 
-	var intermediates []string
 	if rel != "" {
-		intermediates = strings.Split(rel, string(filepath.Separator))
-	}
-
-	code := jen.Empty()
-
-	if lp.parentNode.name != root.name {
-		for _, p := range intermediates {
-			code = code.Dot(p)
+		for p := range strings.SplitSeq(rel, string(filepath.Separator)) {
+			codeRoot = codeRoot.Dot(p)
 		}
-		code = code.Dot(lp.parentNode.name)
 	}
 
-	code = code.Dot(lp.leaf.name)
-
-	return code
+	codeRoot = codeRoot.Dot(lp.leaf.name)
+	if isFunc {
+		codeRoot = codeRoot.Call()
+	}
+	return codeRoot
 }
 
 // getAllLeafNodes recursively collects all leaf nodes from n, returning them
@@ -494,17 +474,18 @@ func buildConcreteFieldAccess(lp leafWithPath, root *node) jen.Code {
 type leafWithPath struct {
 	leaf       *node
 	parentNode *node
-	path       string // the path arg that was active when the leaf's parent was visited
+	path       string // full path from root down to and including parentNode
 }
 
 func collectAllLeaves(n *node, path string) []leafWithPath {
 	var out []leafWithPath
+	currentPath := filepath.Join(path, n.name)
 	for _, name := range sortedKeys(n.children) {
 		child := n.children[name]
 		if len(child.children) == 0 {
-			out = append(out, leafWithPath{leaf: child, parentNode: n, path: path})
+			out = append(out, leafWithPath{leaf: child, parentNode: n, path: currentPath})
 		} else {
-			out = append(out, collectAllLeaves(child, filepath.Join(path, n.name))...)
+			out = append(out, collectAllLeaves(child, currentPath)...)
 		}
 	}
 	return out

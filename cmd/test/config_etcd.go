@@ -3,13 +3,35 @@ package main
 
 import (
 	"context"
-
 	tetcd "github.com/NHAS/tetcd"
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
 	paths "github.com/NHAS/tetcd/paths"
 	v3 "go.etcd.io/etcd/client/v3"
 )
+
+type autoTypeConfigDummy struct{}
+
+// Something5() KV should contain type string
+func (autoTypeConfigDummy) Something5() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/Dummy/Something5", codecs.NewJsonCodec[string]())
+}
+
+type autoResultConfigDummy struct{ Something5 string }
+
+// Get fetches all fields of autoResultConfigDummy in one or more transactions pinned to the same etcd revision.
+func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client) (result autoResultConfigDummy, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli)
+	h0_0 := tetcd.GetTx(txn0.Then(), a.Something5())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.Something5, err = h0_0.Value()
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
 
 type autoTypeConfigServer struct{}
 
@@ -62,7 +84,87 @@ func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client) (result c
 	return result, nil
 }
 
-type autoTypeConfigTLS struct{}
+type autoTypeNestedInTlsDoublyNested struct{}
+
+// Arghh() KV should contain type string
+func (autoTypeNestedInTlsDoublyNested) Arghh() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/TLS/NestedInTls/DoublyNested/Arghh", codecs.NewJsonCodec[string]())
+}
+
+type autoResultNestedInTlsDoublyNested struct{ Arghh string }
+
+// Get fetches all fields of autoResultNestedInTlsDoublyNested in one or more transactions pinned to the same etcd revision.
+func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client) (result autoResultNestedInTlsDoublyNested, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli)
+	h0_0 := tetcd.GetTx(txn0.Then(), a.Arghh())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.Arghh, err = h0_0.Value()
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+type autoTypeTLSNestedInTls struct {
+	DoublyNested autoTypeNestedInTlsDoublyNested
+}
+
+// Fronk() KV should contain type string
+func (autoTypeTLSNestedInTls) Fronk() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Fronk", codecs.NewJsonCodec[string]())
+}
+
+// Number() KV should contain type int
+func (autoTypeTLSNestedInTls) Number() paths.Path[int] {
+	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Number", codecs.NewJsonCodec[int]())
+}
+
+// Something() KV should contain type string
+func (autoTypeTLSNestedInTls) Something() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Something", codecs.NewJsonCodec[string]())
+}
+
+type autoResultTLSNestedInTls struct {
+	Number       int
+	Something    string
+	Fronk        string
+	DoublyNested struct{ Arghh string }
+}
+
+// Get fetches all fields of autoResultTLSNestedInTls in one or more transactions pinned to the same etcd revision.
+func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client) (result autoResultTLSNestedInTls, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli)
+	h0_0 := tetcd.GetTx(txn0.Then(), a.DoublyNested.Arghh())
+	h0_1 := tetcd.GetTx(txn0.Then(), a.Fronk())
+	h0_2 := tetcd.GetTx(txn0.Then(), a.Number())
+	h0_3 := tetcd.GetTx(txn0.Then(), a.Something())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.DoublyNested.Arghh, err = h0_0.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Fronk, err = h0_1.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Number, err = h0_2.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Something, err = h0_3.Value()
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+type autoTypeConfigTLS struct {
+	NestedInTls autoTypeTLSNestedInTls
+}
 
 // CertFile() KV should contain type string
 func (autoTypeConfigTLS) CertFile() paths.Path[string] {
@@ -85,6 +187,10 @@ func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result conf
 	h0_0 := tetcd.GetTx(txn0.Then(), a.CertFile())
 	h0_1 := tetcd.DynamicCollectionTx(txn0.Then(), a.Groups())
 	h0_2 := tetcd.GetTx(txn0.Then(), a.KeyFile())
+	h0_3 := tetcd.GetTx(txn0.Then(), a.NestedInTls.DoublyNested.Arghh())
+	h0_4 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Fronk())
+	h0_5 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Number())
+	h0_6 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Something())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -100,10 +206,27 @@ func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result conf
 	if err != nil {
 		return result, err
 	}
+	result.NestedInTls.DoublyNested.Arghh, err = h0_3.Value()
+	if err != nil {
+		return result, err
+	}
+	result.NestedInTls.Fronk, err = h0_4.Value()
+	if err != nil {
+		return result, err
+	}
+	result.NestedInTls.Number, err = h0_5.Value()
+	if err != nil {
+		return result, err
+	}
+	result.NestedInTls.Something, err = h0_6.Value()
+	if err != nil {
+		return result, err
+	}
 	return result, nil
 }
 
 type autoTypeConfig struct {
+	Dummy  autoTypeConfigDummy
 	Server autoTypeConfigServer
 	TLS    autoTypeConfigTLS
 }

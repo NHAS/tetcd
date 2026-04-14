@@ -16,12 +16,26 @@ type TLSConfig struct {
 	CertFile string
 	KeyFile  string
 
+	NestedInTls struct {
+		Number    int
+		Something string
+		Fronk     string
+
+		DoublyNested struct {
+			Arghh string
+		}
+	}
+
 	Groups map[string][]string
 }
 
 type Config struct {
 	Server ServerConfig
 	TLS    TLSConfig
+
+	Dummy struct {
+		Something5 string
+	}
 
 	Name   string
 	Labels map[string]string
