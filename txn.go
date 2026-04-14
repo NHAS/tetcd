@@ -133,10 +133,10 @@ func GetTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOpti
 	return result
 }
 
-// ListNestedTx queues a prefix GET for a MapSlicePath and returns a *ListSliceHandle[T].
+// DynamicCollectionTx queues a prefix GET for a MapSlicePath and returns a *ListSliceHandle[T].
 // After Commit(), call Entries() to get the full map[string]map[string]V result.
-func ListNestedTx[T any](t *TxnConditional, path paths.MapSlicePath[T], opts ...clientv3.OpOption) *ListSliceHandle[T] {
-	result := &ListSliceHandle[T]{
+func DynamicCollectionTx[T any](t *TxnConditional, path paths.MapSlicePath[T], opts ...clientv3.OpOption) *DynamicHandle[T] {
+	result := &DynamicHandle[T]{
 		codec:        path.Codec(),
 		prefix:       path.Prefix(),
 		presenceOnly: path.PresenceOnly(),
@@ -595,8 +595,8 @@ func (h *DeleteHandle[T]) PrevValue() (T, error) {
 	return h.prevVal, nil
 }
 
-// ListSliceHandle holds the results of a prefix GET for a MapSlicePath.
-type ListSliceHandle[T any] struct {
+// DynamicHandle holds the results of a prefix GET for a MapSlicePath.
+type DynamicHandle[T any] struct {
 	err          error
 	items        map[string]map[string]T
 	codec        codecs.Codec[T]
@@ -604,7 +604,7 @@ type ListSliceHandle[T any] struct {
 	presenceOnly bool
 }
 
-func (h *ListSliceHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
+func (h *DynamicHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 	rangeResp := resp.GetResponseRange()
 	if rangeResp == nil {
 		return fmt.Errorf("expected range response for list slice, got something else")
@@ -641,10 +641,10 @@ func (h *ListSliceHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 	return nil
 }
 
-func (h *ListSliceHandle[T]) fail(err error) { h.err = err }
+func (h *DynamicHandle[T]) fail(err error) { h.err = err }
 
 // Entries returns the decoded two-level map after Commit().
-func (h *ListSliceHandle[T]) Entries() (map[string]map[string]T, error) {
+func (h *DynamicHandle[T]) Entries() (map[string]map[string]T, error) {
 	if h.err != nil {
 		return nil, h.err
 	}
@@ -659,7 +659,7 @@ func (h *ListSliceHandle[T]) Entries() (map[string]map[string]T, error) {
 	return h.items, nil
 }
 
-func (h *ListSliceHandle[T]) Keys() (map[string][]string, error) {
+func (h *DynamicHandle[T]) Keys() (map[string][]string, error) {
 	if h.err != nil {
 		return nil, h.err
 	}

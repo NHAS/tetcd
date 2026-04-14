@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+
 	tetcd "github.com/NHAS/tetcd"
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
@@ -82,7 +83,7 @@ func (autoTypeConfigTLS) KeyFile() paths.Path[string] {
 func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result config.TLSConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.CertFile())
-	h0_1 := tetcd.ListNestedTx(txn0.Then(), a.Groups())
+	h0_1 := tetcd.DynamicCollectionTx(txn0.Then(), a.Groups())
 	h0_2 := tetcd.GetTx(txn0.Then(), a.KeyFile())
 	if err := txn0.Commit(); err != nil {
 		return result, err
