@@ -923,3 +923,264 @@ func TestTxn_DeepNesting_AllFourPaths(t *testing.T) {
 		})
 	}
 }
+
+// ...existing code...
+
+// ---------------------------------------------------------------------------
+// DeleteHandle – deleted count
+// ---------------------------------------------------------------------------
+
+func TestTxn_DeleteHandle_DeletedCount(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-count")
+
+	if _, err := client.Put(ctx, p.Key(), `"value"`); err != nil {
+		t.Fatalf("seed put failed: %v", err)
+	}
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p)
+	if err := txn.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	count, err := h.Deleted()
+	if err != nil {
+		t.Fatalf("Deleted() failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected deleted count 1, got %d", count)
+	}
+}
+
+func TestTxn_DeleteHandle_DeletedCount_KeyMissing(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-count-missing")
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p)
+	if err := txn.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	count, err := h.Deleted()
+	if err != nil {
+		t.Fatalf("Deleted() failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected deleted count 0 for missing key, got %d", count)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DeleteHandle – PrevValue with WithPrevKV
+// ---------------------------------------------------------------------------
+
+func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-prevkv")
+
+	if err := PutTx(NewTxn(ctx, client).Then(), p, "original"); err != nil {
+		t.Fatalf("seed PutTx failed: %v", err)
+	}
+	if err := NewTxn(ctx, client).Commit(); err != nil {
+		t.Fatalf("seed Commit failed: %v", err)
+	}
+
+	// Use a fresh txn to actually write the seed value
+	seedTxn := NewTxn(ctx, client)
+	if err := PutTx(seedTxn.Then(), p, "original"); err != nil {
+		t.Fatalf("seed PutTx failed: %v", err)
+	}
+	if err := seedTxn.Commit(); err != nil {
+		t.Fatalf("seed Commit failed: %v", err)
+	}
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p, clientv3.WithPrevKV())
+	if err := txn.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	prev, err := h.PrevValue()
+	if err != nil {
+		t.Fatalf("PrevValue() failed: %v", err)
+	}
+	if prev != "original" {
+		t.Errorf("expected prev value 'original', got %q", prev)
+	}
+
+	count, err := h.Deleted()
+	if err != nil {
+		t.Fatalf("Deleted() failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected deleted count 1, got %d", count)
+	}
+}
+
+func TestTxn_DeleteHandle_PrevValue_NotFound_WhenNoPrevKVOption(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-no-prevkv")
+
+	seedTxn := NewTxn(ctx, client)
+	if err := PutTx(seedTxn.Then(), p, "data"); err != nil {
+		t.Fatalf("seed PutTx failed: %v", err)
+	}
+	if err := seedTxn.Commit(); err != nil {
+		t.Fatalf("seed Commit failed: %v", err)
+	}
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p) // no WithPrevKV
+	if err := txn.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	_, err := h.PrevValue()
+	if err != paths.ErrNotFound {
+		t.Errorf("expected ErrNotFound when WithPrevKV not set, got %v", err)
+	}
+}
+
+func TestTxn_DeleteHandle_PrevValue_KeyMissing(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-prevkv-missing")
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p, clientv3.WithPrevKV())
+	if err := txn.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	_, err := h.PrevValue()
+	if err != paths.ErrNotFound {
+		t.Errorf("expected ErrNotFound for missing key, got %v", err)
+	}
+
+	count, err := h.Deleted()
+	if err != nil {
+		t.Fatalf("Deleted() failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected deleted count 0, got %d", count)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DeleteHandle – ErrNotDone before Commit
+// ---------------------------------------------------------------------------
+
+func TestTxn_DeleteHandle_ErrNotDone(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-notdone")
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p)
+	// deliberately do NOT commit
+
+	if _, err := h.Deleted(); err != ErrNotDone {
+		t.Errorf("Deleted(): expected ErrNotDone before Commit, got %v", err)
+	}
+	if _, err := h.PrevValue(); err != ErrNotDone {
+		t.Errorf("PrevValue(): expected ErrNotDone before Commit, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DeleteHandle – Key() returns correct path
+// ---------------------------------------------------------------------------
+
+func TestTxn_DeleteHandle_KeyReturnsPath(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	p := TestPaths.SingleKey("delete-handle-key")
+
+	txn := NewTxn(ctx, client)
+	h := DeleteTx(txn.Then(), p)
+	_ = txn.Commit()
+
+	if h.Key() != p.Key() {
+		t.Errorf("expected handle key %q, got %q", p.Key(), h.Key())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DeleteHandle – inside conditional branch
+// ---------------------------------------------------------------------------
+
+func TestTxn_DeleteHandle_InConditionalThenBranch(t *testing.T) {
+	client, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	triggerPath := TestPaths.SingleKey("delete-cond-trigger")
+	deletePath := TestPaths.SingleKey("delete-cond-target")
+
+	seedTxn := NewTxn(ctx, client)
+	if err := PutTx(seedTxn.Then(), triggerPath, "trigger"); err != nil {
+		t.Fatalf("seed trigger failed: %v", err)
+	}
+	if err := PutTx(seedTxn.Then(), deletePath, "to-delete"); err != nil {
+		t.Fatalf("seed target failed: %v", err)
+	}
+	if err := seedTxn.Commit(); err != nil {
+		t.Fatalf("seed Commit failed: %v", err)
+	}
+
+	txn := NewTxn(ctx, client)
+	thenCond, _ := txn.Conditional(clientv3util.KeyExists(triggerPath.Key()))
+	h := DeleteTx(thenCond, deletePath, clientv3.WithPrevKV())
+
+	if err := txn.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	if !txn.SubTxn.succeeded {
+		t.Fatal("expected then branch to be taken")
+	}
+
+	prev, err := h.PrevValue()
+	if err != nil {
+		t.Fatalf("PrevValue() failed: %v", err)
+	}
+	if prev != "to-delete" {
+		t.Errorf("expected prev 'to-delete', got %q", prev)
+	}
+
+	count, err := h.Deleted()
+	if err != nil {
+		t.Fatalf("Deleted() failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected deleted count 1, got %d", count)
+	}
+
+	resp, err := client.Get(ctx, deletePath.Key())
+	if err != nil {
+		t.Fatalf("raw get failed: %v", err)
+	}
+	if resp.Count != 0 {
+		t.Error("expected key to be deleted")
+	}
+}

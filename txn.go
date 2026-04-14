@@ -168,12 +168,19 @@ func PutTx[T any](t *TxnConditional, path paths.Path[T], value T, opts ...client
 }
 
 // DeleteTx queues a DELETE in the transaction.
-func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOption) {
+func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOption) *DeleteHandle[T] {
+	result := &DeleteHandle[T]{
+		codec: path.Codec(),
+		key:   path.Key(),
+	}
+
 	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
 		ops = append(ops, clientv3.OpDelete(path.Key(), opts...))
-		handles = append(handles, nil)
+		handles = append(handles, result)
 		return ops, handles
 	})
+
+	return result
 }
 
 // SubTx creates a nested sub-transaction within the given branch.
@@ -327,9 +334,14 @@ func (t *SubTxn) resolve(resp *clientv3.TxnResponse) error {
 		}
 
 		if del := c.GetResponseDeleteRange(); del != nil {
-			if handles[i] != nil {
-				return fmt.Errorf("delete response at index %d unexpectedly has a handle", i)
+			if handles[i] == nil {
+				return fmt.Errorf("delete response at index %d has no handle", i)
 			}
+
+			if err := handles[i].parse(c); err != nil {
+				return err
+			}
+
 			continue
 		}
 
@@ -482,6 +494,78 @@ func (h *ListHandle[T]) Keys() ([]string, error) {
 		return nil, paths.ErrNotFound
 	}
 	return h.keys, nil
+}
+
+// ---------------------------------------------------------------------------
+// DeleteHandle – delete result with optional prev-KV and deleted count
+// ---------------------------------------------------------------------------
+
+// DeleteHandle holds the result of a DELETE queued with DeleteTx.
+// If DeleteTx was called with clientv3.WithPrevKV(), PrevValue() returns the
+// value that existed before deletion. Deleted() always returns the count of
+// keys removed.
+type DeleteHandle[T any] struct {
+	err     error
+	prevVal T
+	hasPrev bool
+	deleted int64
+	key     string
+	codec   codecs.Codec[T]
+	wrote   bool
+}
+
+func (h *DeleteHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
+	h.wrote = true
+
+	delResp := resp.GetResponseDeleteRange()
+	if delResp == nil {
+		return fmt.Errorf("expected delete response, got something else – this should never happen")
+	}
+
+	h.deleted = delResp.Deleted
+
+	if len(delResp.PrevKvs) > 0 {
+		val, err := h.codec.Decode(delResp.PrevKvs[0].Value)
+		if err != nil {
+			return fmt.Errorf("decoding prev kv for %q: %w", h.key, err)
+		}
+		h.prevVal = val
+		h.hasPrev = true
+	}
+
+	return nil
+}
+
+func (h *DeleteHandle[T]) fail(err error) { h.err = err }
+
+func (h *DeleteHandle[T]) Key() string { return h.key }
+
+// Deleted returns the number of keys removed by the operation.
+func (h *DeleteHandle[T]) Deleted() (int64, error) {
+	if !h.wrote {
+		return 0, ErrNotDone
+	}
+	if h.err != nil {
+		return 0, h.err
+	}
+	return h.deleted, nil
+}
+
+// PrevValue returns the value that existed before deletion.
+// Returns paths.ErrNotFound if the key did not exist or DeleteTx was not
+// called with clientv3.WithPrevKV().
+func (h *DeleteHandle[T]) PrevValue() (T, error) {
+	var zero T
+	if !h.wrote {
+		return zero, ErrNotDone
+	}
+	if h.err != nil {
+		return zero, h.err
+	}
+	if !h.hasPrev {
+		return zero, paths.ErrNotFound
+	}
+	return h.prevVal, nil
 }
 
 // ---------------------------------------------------------------------------
