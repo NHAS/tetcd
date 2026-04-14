@@ -15,6 +15,8 @@ type ServerConfig struct {
 type TLSConfig struct {
 	CertFile string
 	KeyFile  string
+
+	Groups map[string][]string
 }
 
 type Config struct {

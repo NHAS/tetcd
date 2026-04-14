@@ -17,19 +17,15 @@ import (
 // Thing/bloop
 //
 //	             -> "noot1":{data: 1}
-//		            -> "noot2"
+//		         -> "noot2"
 type MapSlicePath[V any] struct {
-	prefix string
-	codec  codecs.Codec[V]
+	prefix       string
+	codec        codecs.Codec[V]
+	presenceOnly bool
 }
 
-type Tuple[V any] struct {
-	Key   string
-	Value V
-}
-
-func NewMapSlicePath[V any](prefix string, codec codecs.Codec[V]) MapSlicePath[V] {
-	return MapSlicePath[V]{prefix: prefix, codec: codec}
+func NewMapSlicePath[V any](prefix string, codec codecs.Codec[V], presenceOnly bool) MapSlicePath[V] {
+	return MapSlicePath[V]{prefix: prefix, codec: codec, presenceOnly: presenceOnly}
 }
 
 func (m MapSlicePath[V]) Prefix() string { return m.prefix }

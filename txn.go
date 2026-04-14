@@ -19,7 +19,13 @@ type Txn struct {
 	ctx context.Context
 	cli *clientv3.Client
 
+	rev int64
+
 	SubTxn
+}
+
+func (t *Txn) Rev() int64 {
+	return t.rev
 }
 
 type collection struct {
@@ -253,6 +259,7 @@ func (t *Txn) Commit() error {
 	}
 
 	t.SubTxn.succeeded = resp.Succeeded
+	t.rev = resp.Header.Revision
 
 	return t.SubTxn.resolve(resp)
 }

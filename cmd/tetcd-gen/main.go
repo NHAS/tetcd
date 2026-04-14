@@ -16,7 +16,10 @@ import (
 )
 
 var (
-	Type     string
+	FullyQualifiedType string
+	PkgPath            string
+	TypeName           string
+
 	Pkg      string
 	Filename string
 
@@ -43,12 +46,12 @@ func splitType(s string) (pkgPath, typeName string, err error) {
 
 func main() {
 	flag.StringVar(&Prefix, "prefix", "", "the global etcd key prefix")
-	flag.StringVar(&Type, "type", "", "fully qualified type to analyse, e.g. github.com/some/pkg.Config (required)")
+	flag.StringVar(&FullyQualifiedType, "type", "", "fully qualified type to analyse, e.g. github.com/some/pkg.Config (required)")
 	flag.StringVar(&Pkg, "pkg", "", "output package name (defaults to $GOPACKAGE)")
 	flag.StringVar(&Filename, "out", "", "output file (default: <type>_gen.go in current dir)")
 	flag.Parse()
 
-	if Type == "" {
+	if FullyQualifiedType == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -62,12 +65,13 @@ func main() {
 	}
 
 	if Filename == "" {
-		Filename = strings.ToLower(Type) + "_gen.go"
+		Filename = strings.ToLower(FullyQualifiedType) + "_gen.go"
 	}
 
-	pkgPath, typeName, err := splitType(Type)
+	var err error
+	PkgPath, TypeName, err = splitType(FullyQualifiedType)
 	if err != nil {
-		log.Fatalf("invalid -type %q: %v", Type, err)
+		log.Fatalf("invalid -type %q: %v", FullyQualifiedType, err)
 	}
 
 	cfg := &packages.Config{
@@ -79,7 +83,7 @@ func main() {
 		Dir: ".",
 	}
 
-	pkgs, err := packages.Load(cfg, pkgPath)
+	pkgs, err := packages.Load(cfg, PkgPath)
 	if err != nil {
 		log.Fatalf("loading package: %v", err)
 	}
@@ -89,14 +93,14 @@ func main() {
 
 	pkg := pkgs[0]
 
-	obj := pkg.Types.Scope().Lookup(typeName)
+	obj := pkg.Types.Scope().Lookup(TypeName)
 	if obj == nil {
-		log.Fatalf("type %q not found in package %s", typeName, pkg.PkgPath)
+		log.Fatalf("type %q not found in package %s", TypeName, pkg.PkgPath)
 	}
 
 	named, ok := obj.Type().(*types.Named)
 	if !ok {
-		log.Fatalf("%q is not a named type", typeName)
+		log.Fatalf("%q is not a named type", TypeName)
 	}
 
 	root, err := buildNode(named.Obj().Name(), named.Underlying(), false)
@@ -255,6 +259,7 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 	result = append(result, generateFunctions(root, path, pathsPkg, codecsPkg)...)
 
 	if path == "" {
+		result = append(result, generateGetAll(root, path)...)
 		result = append(result,
 			jen.Var().Id(root.name).Op("=").Id(typeName).Values(),
 		)
@@ -262,6 +267,214 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 
 	return result
 }
+
+func generateGetAll(n *node, path string) []jen.Code {
+	leaves := collectAllLeaves(n, path)
+	if len(leaves) == 0 {
+		return nil
+	}
+
+	typeName := structTypeName(n.name, path)
+	concreteTypeName := n.name
+
+	var batches [][]leafWithPath
+	for i := 0; i < len(leaves); i += maxOpsPerTxn {
+		end := min(i+maxOpsPerTxn, len(leaves))
+		batches = append(batches, leaves[i:end])
+	}
+
+	var body []jen.Code
+
+	if len(batches) > 1 {
+		body = append(body, jen.Var().Id("rev").Int64())
+	}
+
+	for batchIdx, batch := range batches {
+		batchStmts, handleNames := buildBatchStatementsFromMethods(batchIdx, batch, len(batches), n)
+		body = append(body, batchStmts...)
+
+		for i, lp := range batch {
+			handleName := handleNames[i]
+			fieldAccess := buildConcreteFieldAccess(lp, n)
+
+			valueMethod := "Value"
+			if !lp.leaf.single && !lp.leaf.isCompressed {
+				valueMethod = "Entries"
+			}
+
+			body = append(body,
+				jen.List(jen.Id("result").Add(fieldAccess), jen.Err()).
+					Op("=").Id(handleName).Dot(valueMethod).Call(),
+				jen.If(jen.Err().Op("!=").Nil()).Block(
+					jen.Return(jen.Id("result"), jen.Err()),
+				),
+			)
+		}
+	}
+
+	body = append(body, jen.Return(jen.Id("result"), jen.Nil()))
+
+	fn := jen.Commentf("Get fetches all fields of %s in one or more transactions pinned to the same etcd revision.", concreteTypeName)
+	fn2 := jen.Func().
+		Params(jen.Id("a").Id(typeName)).
+		Id("Get").
+		Params(
+			jen.Id("ctx").Qual("context", "Context"),
+			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
+		).
+		Params(jen.Id("result").Qual(PkgPath, concreteTypeName), jen.Id("err").Error()).
+		Block(body...)
+
+	return []jen.Code{fn, fn2}
+}
+
+// buildBatchStatementsFromMethods emits the txn setup, GetTx calls using the
+// generated accessor methods on the autoType receiver, and Commit for one batch.
+func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, totalBatches int, root *node) ([]jen.Code, []string) {
+	var stmts []jen.Code
+	var handleNames []string
+
+	txnVar := fmt.Sprintf("txn%d", batchIdx)
+	tetcdPkg := "github.com/NHAS/tetcd"
+
+	stmts = append(stmts,
+		jen.Id(txnVar).Op(":=").Qual(tetcdPkg, "NewTxn").Call(jen.Id("ctx"), jen.Id("cli")),
+	)
+
+	for i, lp := range batch {
+		handleVar := fmt.Sprintf("h%d_%d", batchIdx, i)
+		handleNames = append(handleNames, handleVar)
+
+		// Build the method call chain: a.Sub().Leaf()
+		// Start from "a" (the receiver), then call each intermediate node's accessor,
+		// then the leaf accessor.
+		accessorChain := buildAccessorChain(lp, root)
+
+		txFunc := "GetTx"
+		if !lp.leaf.single && !lp.leaf.isCompressed {
+			txFunc = "ListTx"
+		}
+
+		var getTxCall *jen.Statement
+		if batchIdx > 0 {
+			extraOpts := jen.Qual("go.etcd.io/etcd/client/v3", "WithRev").Call(jen.Id("rev"))
+			getTxCall = jen.Id(handleVar).Op(":=").Qual(tetcdPkg, txFunc).Call(
+				jen.Id(txnVar).Dot("Then").Call(),
+				accessorChain,
+				extraOpts,
+			)
+		} else {
+			getTxCall = jen.Id(handleVar).Op(":=").Qual(tetcdPkg, txFunc).Call(
+				jen.Id(txnVar).Dot("Then").Call(),
+				accessorChain,
+			)
+		}
+		stmts = append(stmts, getTxCall)
+	}
+
+	stmts = append(stmts,
+		jen.If(
+			jen.Err().Op(":=").Id(txnVar).Dot("Commit").Call(),
+			jen.Err().Op("!=").Nil(),
+		).Block(jen.Return(jen.Id("result"), jen.Err())),
+	)
+
+	if batchIdx == 0 && totalBatches > 1 {
+		stmts = append(stmts,
+			jen.Id("rev").Op("=").Id(txnVar).Dot("Rev").Call(),
+		)
+	}
+
+	return stmts, handleNames
+}
+
+// buildAccessorChain constructs a jen expression like:
+//
+//	a.Server().Host()
+//
+// by walking from root down through the intermediate nodes to the leaf.
+// lp.path is the path *above* lp.parentNode (e.g. "Config" for a leaf in Config.Server).
+// Intermediate struct fields are accessed as methods on the autoType receiver.
+// The final leaf is also called as a method.
+func buildAccessorChain(lp leafWithPath, root *node) jen.Code {
+	rel := lp.path
+	rel = strings.TrimPrefix(rel, root.name)
+	rel = strings.TrimPrefix(rel, string(filepath.Separator))
+
+	// intermediates are struct field accesses (not calls), only the final leaf is a method call
+	var intermediates []string
+	if rel != "" {
+		intermediates = strings.Split(rel, string(filepath.Separator))
+	}
+
+	// If parentNode is the root itself, there are no intermediate field accesses.
+	// If parentNode is a sub-struct, it is a field access, and only the leaf is a method call.
+	code := jen.Id("a")
+
+	if lp.parentNode.name != root.name {
+		// Walk intermediate struct fields (between root and parentNode)
+		for _, p := range intermediates {
+			code = code.Dot(p)
+		}
+		// parentNode is a struct field access
+		code = code.Dot(lp.parentNode.name)
+	}
+
+	// leaf is always a method call
+	code = code.Dot(lp.leaf.name).Call()
+
+	return code
+}
+
+// buildConcreteFieldAccess returns the jen field selector chain to reach a leaf
+// on the concrete result struct (e.g. .Server.Host for result.Server.Host).
+// lp.path is the path *above* lp.parentNode (e.g. "Config" for Config.Server.Host).
+func buildConcreteFieldAccess(lp leafWithPath, root *node) jen.Code {
+	rel := lp.path
+	rel = strings.TrimPrefix(rel, root.name)
+	rel = strings.TrimPrefix(rel, string(filepath.Separator))
+
+	var intermediates []string
+	if rel != "" {
+		intermediates = strings.Split(rel, string(filepath.Separator))
+	}
+
+	code := jen.Empty()
+
+	if lp.parentNode.name != root.name {
+		for _, p := range intermediates {
+			code = code.Dot(p)
+		}
+		code = code.Dot(lp.parentNode.name)
+	}
+
+	code = code.Dot(lp.leaf.name)
+
+	return code
+}
+
+// getAllLeafNodes recursively collects all leaf nodes from n, returning them
+// together with the path segment needed to build their etcd key.
+type leafWithPath struct {
+	leaf       *node
+	parentNode *node
+	path       string // the path arg that was active when the leaf's parent was visited
+}
+
+func collectAllLeaves(n *node, path string) []leafWithPath {
+	var out []leafWithPath
+	for _, name := range sortedKeys(n.children) {
+		child := n.children[name]
+		if len(child.children) == 0 {
+			out = append(out, leafWithPath{leaf: child, parentNode: n, path: path})
+		} else {
+			out = append(out, collectAllLeaves(child, filepath.Join(path, n.name))...)
+		}
+	}
+	return out
+}
+
+const maxOpsPerTxn = 50
 
 func structTypeName(name, path string) string {
 	prefix := ""
@@ -357,6 +570,7 @@ func generateMapFunction(receiver *jen.Statement, f *node, etcdPath string, valu
 func generateSliceMapFunction(receiver *jen.Statement, f *node, etcdPath string, valueType types.Type, pathsPkg, codecsPkg string) []jen.Code {
 	var elemType types.Type
 
+	presenceOnly := false
 	switch ut := valueType.Underlying().(type) {
 	case *types.Slice:
 		elem := ut.Elem().Underlying()
@@ -364,10 +578,10 @@ func generateSliceMapFunction(receiver *jen.Statement, f *node, etcdPath string,
 			log.Fatalf("field %s: map[string][]T only supports []string or []byte", f.name)
 		}
 		elemType = ut.Elem()
-
+		presenceOnly = true
 	case *types.Map:
 		if !isKind(ut.Key(), types.String) {
-			log.Fatalf("field %s: map[string]map[K]V requires string inner key", f.name)
+			log.Fatalf("field %s: map[string]map[K]V requires K to be string", f.name)
 		}
 		elemType = ut.Elem()
 
@@ -383,6 +597,7 @@ func generateSliceMapFunction(receiver *jen.Statement, f *node, etcdPath string,
 				jen.Qual(pathsPkg, "NewMapSlicePath").Call(
 					jen.Lit(etcdPath),
 					jen.Qual(codecsPkg, "NewJsonCodec").Types(typeExpr(elemType)).Call(),
+					jen.Lit(presenceOnly),
 				),
 			)),
 	}

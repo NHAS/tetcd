@@ -9,14 +9,14 @@ import (
 )
 
 func TestMapSlicePath_Prefix(t *testing.T) {
-	m := paths.NewMapSlicePath("wag/Thing", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing", codecs.NewJsonCodec[string](), false)
 	if got := m.Prefix(); got != "wag/Thing" {
 		t.Errorf("Prefix() = %q, want %q", got, "wag/Thing")
 	}
 }
 
 func TestMapSlicePath_Key_ReturnsMapPath(t *testing.T) {
-	m := paths.NewMapSlicePath("wag/Thing", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing", codecs.NewJsonCodec[string](), false)
 	mp := m.Key("bloop")
 	if got := mp.Prefix(); got != "wag/Thing/bloop" {
 		t.Errorf("Key().Prefix() = %q, want %q", got, "wag/Thing/bloop")
@@ -28,7 +28,7 @@ func TestMapSlicePath_List_Empty(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapSlicePath("wag/Thing/Empty", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing/Empty", codecs.NewJsonCodec[string](), false)
 
 	_, got, err := m.List(ctx, cli)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestMapSlicePath_List(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapSlicePath("wag/Thing/List", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing/List", codecs.NewJsonCodec[string](), false)
 
 	want := map[string]map[string]string{
 		"bloop": {"noot1": "data1", "noot2": "data2"},
@@ -86,7 +86,7 @@ func TestMapSlicePath_List_SkipsInvalidDepth(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapSlicePath("wag/Thing/Depth", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing/Depth", codecs.NewJsonCodec[string](), false)
 
 	// Write a key that only has one level (no inner key) — should be skipped
 	if _, err := cli.Put(ctx, "wag/Thing/Depth/onlyone", `"orphan"`); err != nil {
@@ -115,7 +115,7 @@ func TestMapSlicePath_DeleteAll(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapSlicePath("wag/Thing/DeleteAll", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing/DeleteAll", codecs.NewJsonCodec[string](), false)
 
 	for outerK, inner := range map[string]map[string]string{
 		"bloop": {"noot1": "data1", "noot2": "data2"},
@@ -151,7 +151,7 @@ func TestMapSlicePath_DeleteAll_Empty(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapSlicePath("wag/Thing/DeleteAllEmpty", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing/DeleteAllEmpty", codecs.NewJsonCodec[string](), false)
 
 	if num, err := m.DeleteAll(ctx, cli); err != nil {
 		t.Fatalf("DeleteAll() on empty prefix error = %v", err)
@@ -165,7 +165,7 @@ func TestMapSlicePath_Key_NestedList(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapSlicePath("wag/Thing/Nested", codecs.NewJsonCodec[string]())
+	m := paths.NewMapSlicePath("wag/Thing/Nested", codecs.NewJsonCodec[string](), false)
 
 	if err := m.Key("outer").Key("inner").Put(ctx, cli, "hello"); err != nil {
 		t.Fatalf("Put() error = %v", err)
