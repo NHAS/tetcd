@@ -333,7 +333,6 @@ func generateGetAll(n *node, path string) []jen.Code {
 
 		for i, lp := range batch {
 			handleName := handleNames[i]
-			log.Println(path)
 			fieldAccess := buildFieldAccess(jen.Empty(), lp, path, n, false)
 
 			valueMethod := "Value"
