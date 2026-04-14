@@ -3,8 +3,6 @@
 This project combines code-generation and generics to hopefully provide a fairly usable typesafe harness for the KV store etcd. 
 It generates both the path to your values, based on the struct you pass it when generating, and determines the types.
 
-## Features
-
 ## Example
 
 
