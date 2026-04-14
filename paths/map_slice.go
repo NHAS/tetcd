@@ -28,7 +28,11 @@ func NewMapSlicePath[V any](prefix string, codec codecs.Codec[V], presenceOnly b
 	return MapSlicePath[V]{prefix: prefix, codec: codec, presenceOnly: presenceOnly}
 }
 
+func (m MapSlicePath[V]) Codec() codecs.Codec[V] { return m.codec }
+
 func (m MapSlicePath[V]) Prefix() string { return m.prefix }
+
+func (m MapSlicePath[V]) PresenceOnly() bool { return m.presenceOnly }
 
 // Key drops down to an MapPath for a specific entry
 func (m MapSlicePath[V]) Key(k string) MapPath[V] {

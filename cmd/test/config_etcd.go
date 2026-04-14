@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+
 	tetcd "github.com/NHAS/tetcd"
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
@@ -32,8 +33,8 @@ func (autoTypeConfigServer) Toaster() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/Server/Toaster", codecs.NewJsonCodec[string]())
 }
 
-// Get fetches all fields of Server in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client) (result config.Server, err error) {
+// Get fetches all fields of ServerConfig in one or more transactions pinned to the same etcd revision.
+func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client) (result config.ServerConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Host())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Port())
@@ -78,11 +79,11 @@ func (autoTypeConfigTLS) KeyFile() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/TLS/KeyFile", codecs.NewJsonCodec[string]())
 }
 
-// Get fetches all fields of TLS in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result config.TLS, err error) {
+// Get fetches all fields of TLSConfig in one or more transactions pinned to the same etcd revision.
+func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result config.TLSConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.CertFile())
-	h0_1 := tetcd.ListTx(txn0.Then(), a.Groups())
+	h0_1 := tetcd.ListNestedTx(txn0.Then(), a.Groups())
 	h0_2 := tetcd.GetTx(txn0.Then(), a.KeyFile())
 	if err := txn0.Commit(); err != nil {
 		return result, err

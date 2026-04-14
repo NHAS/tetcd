@@ -133,6 +133,26 @@ func GetTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOpti
 	return result
 }
 
+// ListNestedTx queues a prefix GET for a MapSlicePath and returns a *ListSliceHandle[T].
+// After Commit(), call Entries() to get the full map[string]map[string]V result.
+func ListNestedTx[T any](t *TxnConditional, path paths.MapSlicePath[T], opts ...clientv3.OpOption) *ListSliceHandle[T] {
+	result := &ListSliceHandle[T]{
+		codec:        path.Codec(),
+		prefix:       path.Prefix(),
+		presenceOnly: path.PresenceOnly(),
+	}
+
+	options := append([]clientv3.OpOption{clientv3.WithPrefix()}, opts...)
+
+	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
+		ops = append(ops, clientv3.OpGet(path.Prefix(), options...))
+		handles = append(handles, result)
+		return ops, handles
+	})
+
+	return result
+}
+
 // ListTx queues a prefix GET for a MapPath and returns a *ListHandle[T].
 // This covers the "get all keys under a prefix" pattern used in GetEffectiveAcl
 // for reading group membership, DNS entries, and ACL policies by prefix.
@@ -573,6 +593,65 @@ func (h *DeleteHandle[T]) PrevValue() (T, error) {
 		return zero, paths.ErrNotFound
 	}
 	return h.prevVal, nil
+}
+
+// ListSliceHandle holds the results of a prefix GET for a MapSlicePath.
+type ListSliceHandle[T any] struct {
+	err          error
+	items        map[string]map[string]T
+	codec        codecs.Codec[T]
+	prefix       string
+	presenceOnly bool
+}
+
+func (h *ListSliceHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
+	rangeResp := resp.GetResponseRange()
+	if rangeResp == nil {
+		return fmt.Errorf("expected range response for list slice, got something else")
+	}
+
+	h.items = make(map[string]map[string]T)
+
+	for _, kv := range rangeResp.Kvs {
+		rel := strings.TrimPrefix(string(kv.Key), h.prefix+"/")
+		parts := strings.SplitN(rel, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		outerKey, innerKey := parts[0], parts[1]
+
+		var (
+			val T
+			err error
+		)
+
+		if !h.presenceOnly {
+			val, err = h.codec.Decode(kv.Value)
+			if err != nil {
+				return fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+			}
+		}
+
+		if h.items[outerKey] == nil {
+			h.items[outerKey] = make(map[string]T)
+		}
+		h.items[outerKey][innerKey] = val
+	}
+
+	return nil
+}
+
+func (h *ListSliceHandle[T]) fail(err error) { h.err = err }
+
+// Entries returns the decoded two-level map after Commit().
+func (h *ListSliceHandle[T]) Entries() (map[string]map[string]T, error) {
+	if h.err != nil {
+		return nil, h.err
+	}
+	if h.items == nil {
+		return nil, paths.ErrNotFound
+	}
+	return h.items, nil
 }
 
 // ---------------------------------------------------------------------------

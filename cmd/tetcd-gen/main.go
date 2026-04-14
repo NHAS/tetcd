@@ -27,8 +27,10 @@ var (
 )
 
 type node struct {
-	name         string
-	typeDef      types.Type
+	name      string
+	typeDef   types.Type
+	namedType *types.Named // the declared named type, nil for anonymous structs
+
 	isCompressed bool
 	single       bool
 	children     map[string]*node
@@ -129,12 +131,19 @@ func main() {
 
 func buildNode(name string, t types.Type, compress bool) (*node, error) {
 	if p, ok := t.(*types.Pointer); ok {
-		t = p.Elem().Underlying()
+		t = p.Elem()
+	}
+
+	var named *types.Named
+	if n, ok := t.(*types.Named); ok {
+		named = n
+		t = n.Underlying()
 	}
 
 	result := &node{
 		name:         name,
 		typeDef:      t,
+		namedType:    named,
 		single:       true,
 		isCompressed: compress,
 		children:     map[string]*node{},
@@ -159,14 +168,13 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 
 		isCompress := strings.Contains(tetcdTag, "compress")
 		ft := field.Type()
-		ut := ft.Underlying()
 
-		switch concrete := ut.(type) {
+		switch concrete := ft.Underlying().(type) {
 		case *types.Interface:
 			return nil, fmt.Errorf("use of abstract types for concrete storage: %s", field.Name())
 
 		case *types.Struct:
-			child, err := buildNode(field.Name(), ut, false)
+			child, err := buildNode(field.Name(), ft, false)
 			if err != nil {
 				return nil, err
 			}
@@ -278,8 +286,13 @@ func generateGetAll(n *node, path string) []jen.Code {
 		return nil
 	}
 
-	typeName := structTypeName(n.name, path)
-	concreteTypeName := n.name
+	autoTypeName := structTypeName(n.name, path)
+
+	var concreteTypeName string
+
+	if n.namedType != nil {
+		concreteTypeName = n.namedType.Obj().Name()
+	}
 
 	var batches [][]leafWithPath
 	for i := 0; i < len(leaves); i += maxOpsPerTxn {
@@ -320,7 +333,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 
 	fn := jen.Commentf("Get fetches all fields of %s in one or more transactions pinned to the same etcd revision.", concreteTypeName)
 	fn2 := jen.Func().
-		Params(jen.Id("a").Id(typeName)).
+		Params(jen.Id("a").Id(autoTypeName)).
 		Id("Get").
 		Params(
 			jen.Id("ctx").Qual("context", "Context"),
@@ -357,6 +370,18 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, totalBa
 		txFunc := "GetTx"
 		if !lp.leaf.single && !lp.leaf.isCompressed {
 			txFunc = "ListTx"
+			switch ut := lp.leaf.typeDef.Underlying().(type) {
+			case *types.Map:
+				switch ut.Elem().Underlying().(type) {
+
+				case *types.Slice, *types.Array, *types.Map:
+					txFunc = "ListNestedTx"
+				default:
+				}
+			default:
+				log.Println(handleVar, ut)
+			}
+
 		}
 
 		var getTxCall *jen.Statement
