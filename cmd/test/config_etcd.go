@@ -32,6 +32,35 @@ func (autoTypeConfigServer) Toaster() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/Server/Toaster", codecs.NewJsonCodec[string]())
 }
 
+// Get fetches all fields of Server in one or more transactions pinned to the same etcd revision.
+func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client) (result config.Server, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli)
+	h0_0 := tetcd.GetTx(txn0.Then(), a.Host())
+	h0_1 := tetcd.GetTx(txn0.Then(), a.Port())
+	h0_2 := tetcd.GetTx(txn0.Then(), a.Test())
+	h0_3 := tetcd.GetTx(txn0.Then(), a.Toaster())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.Host, err = h0_0.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Port, err = h0_1.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Test, err = h0_2.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Toaster, err = h0_3.Value()
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 type autoTypeConfigTLS struct{}
 
 // CertFile() KV should contain type string
@@ -47,6 +76,30 @@ func (autoTypeConfigTLS) Groups() paths.MapSlicePath[string] {
 // KeyFile() KV should contain type string
 func (autoTypeConfigTLS) KeyFile() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/TLS/KeyFile", codecs.NewJsonCodec[string]())
+}
+
+// Get fetches all fields of TLS in one or more transactions pinned to the same etcd revision.
+func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result config.TLS, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli)
+	h0_0 := tetcd.GetTx(txn0.Then(), a.CertFile())
+	h0_1 := tetcd.ListTx(txn0.Then(), a.Groups())
+	h0_2 := tetcd.GetTx(txn0.Then(), a.KeyFile())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.CertFile, err = h0_0.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Groups, err = h0_1.Entries()
+	if err != nil {
+		return result, err
+	}
+	result.KeyFile, err = h0_2.Value()
+	if err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 type autoTypeConfig struct {
@@ -67,65 +120,6 @@ func (autoTypeConfig) Name() paths.Path[string] {
 // Tags() KV should contain type []string
 func (autoTypeConfig) Tags() paths.Path[[]string] {
 	return paths.NewPath("wagtest/Config/Tags", codecs.NewJsonCodec[[]string]())
-}
-
-// Get fetches all fields of Config in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfig) Get(ctx context.Context, cli *v3.Client) (result config.Config, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
-	h0_0 := tetcd.ListTx(txn0.Then(), a.Labels())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.Name())
-	h0_2 := tetcd.GetTx(txn0.Then(), a.Server.Host())
-	h0_3 := tetcd.GetTx(txn0.Then(), a.Server.Port())
-	h0_4 := tetcd.GetTx(txn0.Then(), a.Server.Test())
-	h0_5 := tetcd.GetTx(txn0.Then(), a.Server.Toaster())
-	h0_6 := tetcd.GetTx(txn0.Then(), a.TLS.CertFile())
-	h0_7 := tetcd.ListTx(txn0.Then(), a.TLS.Groups())
-	h0_8 := tetcd.GetTx(txn0.Then(), a.TLS.KeyFile())
-	h0_9 := tetcd.GetTx(txn0.Then(), a.Tags())
-	if err := txn0.Commit(); err != nil {
-		return result, err
-	}
-	result.Labels, err = h0_0.Entries()
-	if err != nil {
-		return result, err
-	}
-	result.Name, err = h0_1.Value()
-	if err != nil {
-		return result, err
-	}
-	result.Server.Host, err = h0_2.Value()
-	if err != nil {
-		return result, err
-	}
-	result.Server.Port, err = h0_3.Value()
-	if err != nil {
-		return result, err
-	}
-	result.Server.Test, err = h0_4.Value()
-	if err != nil {
-		return result, err
-	}
-	result.Server.Toaster, err = h0_5.Value()
-	if err != nil {
-		return result, err
-	}
-	result.TLS.CertFile, err = h0_6.Value()
-	if err != nil {
-		return result, err
-	}
-	result.TLS.Groups, err = h0_7.Entries()
-	if err != nil {
-		return result, err
-	}
-	result.TLS.KeyFile, err = h0_8.Value()
-	if err != nil {
-		return result, err
-	}
-	result.Tags, err = h0_9.Value()
-	if err != nil {
-		return result, err
-	}
-	return result, nil
 }
 
 var Config = autoTypeConfig{}

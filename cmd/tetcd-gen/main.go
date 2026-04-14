@@ -259,12 +259,16 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 	result = append(result, generateFunctions(root, path, pathsPkg, codecsPkg)...)
 
 	if path == "" {
-		result = append(result, generateGetAll(root, path)...)
+		// Root node: emit the var but NOT a Get method
 		result = append(result,
 			jen.Var().Id(root.name).Op("=").Id(typeName).Values(),
 		)
+	} else {
+		// Non-root nodes with children get a Get method
+		if len(root.children) > 0 {
+			result = append(result, generateGetAll(root, path)...)
+		}
 	}
-
 	return result
 }
 
