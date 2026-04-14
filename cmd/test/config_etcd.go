@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-
 	tetcd "github.com/NHAS/tetcd"
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
@@ -92,7 +91,7 @@ func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result conf
 	if err != nil {
 		return result, err
 	}
-	result.Groups, err = h0_1.Entries()
+	result.Groups, err = h0_1.Keys()
 	if err != nil {
 		return result, err
 	}

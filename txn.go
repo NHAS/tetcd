@@ -648,10 +648,36 @@ func (h *ListSliceHandle[T]) Entries() (map[string]map[string]T, error) {
 	if h.err != nil {
 		return nil, h.err
 	}
+
+	if h.presenceOnly {
+		return nil, fmt.Errorf("Entries() called on a presence-only ListSliceHandle, use Keys()")
+	}
+
 	if h.items == nil {
 		return nil, paths.ErrNotFound
 	}
 	return h.items, nil
+}
+
+func (h *ListSliceHandle[T]) Keys() (map[string][]string, error) {
+	if h.err != nil {
+		return nil, h.err
+	}
+	if h.items == nil {
+		return nil, paths.ErrNotFound
+	}
+	if !h.presenceOnly {
+		return nil, fmt.Errorf("Keys() called on a non-presence-only ListSliceHandle, use Entries()")
+	}
+	result := make(map[string][]string, len(h.items))
+	for outerKey, inner := range h.items {
+		keys := make([]string, 0, len(inner))
+		for k := range inner {
+			keys = append(keys, k)
+		}
+		result[outerKey] = keys
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

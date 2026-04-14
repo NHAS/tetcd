@@ -317,6 +317,13 @@ func generateGetAll(n *node, path string) []jen.Code {
 			valueMethod := "Value"
 			if !lp.leaf.single && !lp.leaf.isCompressed {
 				valueMethod = "Entries"
+				if ut, ok := lp.leaf.typeDef.Underlying().(*types.Map); ok {
+					if sl, ok := ut.Elem().Underlying().(*types.Slice); ok {
+						if isKind(sl.Elem().Underlying(), types.String) {
+							valueMethod = "Keys"
+						}
+					}
+				}
 			}
 
 			body = append(body,
