@@ -293,7 +293,8 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 func deriveConcreteTypeName(n *node, path string) (jen.Code, string) {
 	if n.namedType != nil {
 		typeName := n.namedType.Obj().Name()
-		return jen.Qual(PkgPath, typeName), typeName
+
+		return jen.Qual(n.namedType.Obj().Pkg().Path(), typeName), typeName
 	}
 	// Anonymous struct: refers to the generated autoConcrete* type
 	prefix := ""
@@ -648,7 +649,24 @@ func typeExpr(t types.Type) jen.Code {
 	case *types.Basic:
 		return jen.Id(ut.Name())
 
+	case *types.Struct:
+		return structTypeExpr(ut)
+
 	default:
 		return jen.Id(t.String())
 	}
+}
+
+func structTypeExpr(s *types.Struct) jen.Code {
+	var fields []jen.Code
+	for field := range s.Fields() {
+		f := jen.Id(field.Name()).Add(typeExpr(field.Type()))
+
+		if field.Anonymous() {
+			f = jen.Add(typeExpr(field.Type()))
+		}
+
+		fields = append(fields, f)
+	}
+	return jen.Struct(fields...)
 }

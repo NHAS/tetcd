@@ -1,5 +1,7 @@
 package config
 
+import "github.com/NHAS/tetcd/cmd/test/another"
+
 type somethingElse struct {
 	Test    string
 	Toaster string
@@ -10,6 +12,10 @@ type ServerConfig struct {
 
 	Host string
 	Port int
+}
+
+type NestedExternal struct {
+	another.SomeType
 }
 
 type TLSConfig struct {
@@ -26,6 +32,8 @@ type TLSConfig struct {
 		}
 	}
 
+	Ahh another.SomeType
+
 	Groups map[string][]string
 }
 
@@ -33,8 +41,15 @@ type Config struct {
 	Server ServerConfig
 	TLS    TLSConfig
 
+	Hello NestedExternal
+
 	Dummy struct {
 		Something5 string
+	}
+
+	SomethingElse struct {
+		another.SomeType
+		Extra string
 	}
 
 	Name   string
