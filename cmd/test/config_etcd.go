@@ -17,10 +17,10 @@ func (autoTypeConfigDummy) Something5() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/Dummy/Something5", codecs.NewJsonCodec[string]())
 }
 
-type autoResultConfigDummy struct{ Something5 string }
+type resultConfigDummy struct{ Something5 string }
 
-// Get fetches all fields of autoResultConfigDummy in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client) (result autoResultConfigDummy, err error) {
+// Get fetches all fields of resultConfigDummy in one or more transactions pinned to the same etcd revision.
+func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client) (result resultConfigDummy, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Something5())
 	if err := txn0.Commit(); err != nil {
@@ -91,10 +91,10 @@ func (autoTypeNestedInTlsDoublyNested) Arghh() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/TLS/NestedInTls/DoublyNested/Arghh", codecs.NewJsonCodec[string]())
 }
 
-type autoResultNestedInTlsDoublyNested struct{ Arghh string }
+type resultNestedInTlsDoublyNested struct{ Arghh string }
 
-// Get fetches all fields of autoResultNestedInTlsDoublyNested in one or more transactions pinned to the same etcd revision.
-func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client) (result autoResultNestedInTlsDoublyNested, err error) {
+// Get fetches all fields of resultNestedInTlsDoublyNested in one or more transactions pinned to the same etcd revision.
+func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client) (result resultNestedInTlsDoublyNested, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Arghh())
 	if err := txn0.Commit(); err != nil {
@@ -126,15 +126,15 @@ func (autoTypeTLSNestedInTls) Something() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Something", codecs.NewJsonCodec[string]())
 }
 
-type autoResultTLSNestedInTls struct {
+type resultTLSNestedInTls struct {
 	Number       int
 	Something    string
 	Fronk        string
 	DoublyNested struct{ Arghh string }
 }
 
-// Get fetches all fields of autoResultTLSNestedInTls in one or more transactions pinned to the same etcd revision.
-func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client) (result autoResultTLSNestedInTls, err error) {
+// Get fetches all fields of resultTLSNestedInTls in one or more transactions pinned to the same etcd revision.
+func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client) (result resultTLSNestedInTls, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.DoublyNested.Arghh())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Fronk())

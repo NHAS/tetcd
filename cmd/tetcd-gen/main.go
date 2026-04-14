@@ -249,6 +249,7 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 		result       []jen.Code
 		structFields []jen.Code
 	)
+	// generates the auto type fields
 	for _, name := range sortedKeys(root.children) {
 		child := root.children[name]
 		if len(child.children) == 0 {
@@ -300,7 +301,7 @@ func deriveConcreteTypeName(n *node, path string) (jen.Code, string) {
 		prefix = filepath.Base(path)
 	}
 
-	constructedTypeName := "autoResult" + prefix + n.name
+	constructedTypeName := "result" + prefix + n.name
 	return jen.Id(constructedTypeName), constructedTypeName
 }
 
