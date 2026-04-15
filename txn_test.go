@@ -23,7 +23,7 @@ func (autoTypeTestPaths) SingleKey(key string) paths.Path[string] {
 }
 
 func (autoTypeTestPaths) MapPrefix(prefix string) paths.MapPath[string] {
-	return paths.NewMapPath("txn/"+prefix+"/", codecs.NewJsonCodec[string]())
+	return paths.NewMapPath("txn/"+prefix+"/", codecs.NewJsonCodec[string](), false)
 }
 
 var TestPaths = autoTypeTestPaths{}

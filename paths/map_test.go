@@ -71,14 +71,14 @@ func seedMap[T any](t *testing.T, ctx context.Context, cli *clientv3.Client, m p
 }
 
 func TestMapPath_Prefix(t *testing.T) {
-	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string](), false)
 	if got := m.Prefix(); got != "wag/Acls/Groups" {
 		t.Errorf("Prefix() = %q, want %q", got, "wag/Acls/Groups")
 	}
 }
 
 func TestMapPath_Key(t *testing.T) {
-	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string](), false)
 	if got := m.Key("admins").Key(); got != "wag/Acls/Groups/admins" {
 		t.Errorf("Key() = %q, want %q", got, "wag/Acls/Groups/admins")
 	}
@@ -89,7 +89,7 @@ func TestMapPath_Keys(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string](), false)
 	seedMap(t, ctx, cli, m, map[string]string{
 		"admins":  "alice,bob",
 		"viewers": "carol",
@@ -119,7 +119,7 @@ func TestMapPath_Keys_Empty(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/Empty", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/Empty", codecs.NewJsonCodec[string](), false)
 
 	keys, err := m.Keys(ctx, cli)
 	if err != nil {
@@ -135,7 +135,7 @@ func TestMapPath_List(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/List", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/List", codecs.NewJsonCodec[string](), false)
 	want := map[string]string{
 		"admins":  "alice,bob",
 		"viewers": "carol",
@@ -161,7 +161,7 @@ func TestMapPath_List_Empty(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/ListEmpty", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/ListEmpty", codecs.NewJsonCodec[string](), false)
 
 	_, got, err := m.List(ctx, cli)
 	if err != nil {
@@ -177,7 +177,7 @@ func TestMapPath_Delete(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/Delete", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/Delete", codecs.NewJsonCodec[string](), false)
 	seedMap(t, ctx, cli, m, map[string]string{
 		"admins":  "alice",
 		"viewers": "carol",
@@ -213,7 +213,7 @@ func TestMapPath_Put(t *testing.T) {
 		}
 	}
 
-	m := paths.NewMapPath("wag/Acls/Settings", codecs.NewJsonCodec[TestObject]())
+	m := paths.NewMapPath("wag/Acls/Settings", codecs.NewJsonCodec[TestObject](), false)
 
 	adminObject := TestObject{Something: "alice", Number: 1, Nested: struct{ Abc bool }{Abc: true}}
 	viewiersObject := TestObject{Something: "carol", Number: 2, Nested: struct{ Abc bool }{Abc: false}}
@@ -240,7 +240,7 @@ func TestMapPath_DeleteAll(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/DeleteAll", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/DeleteAll", codecs.NewJsonCodec[string](), false)
 	seedMap(t, ctx, cli, m, map[string]string{
 		"admins":  "alice",
 		"viewers": "carol",
@@ -269,7 +269,7 @@ func TestMapPath_DeleteAll_Empty(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	m := paths.NewMapPath("wag/Acls/DeleteAllEmpty", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/DeleteAllEmpty", codecs.NewJsonCodec[string](), false)
 
 	deleted, err := m.DeleteAll(ctx, cli)
 	if err != nil {
@@ -286,7 +286,7 @@ func TestMapPath_Watch_Put(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := paths.NewMapPath("wag/Acls/WatchPut", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/WatchPut", codecs.NewJsonCodec[string](), false)
 	ch := m.Watch(ctx, cli)
 
 	if err := m.Key("alpha").Put(ctx, cli, "value1"); err != nil {
@@ -320,7 +320,7 @@ func TestMapPath_Watch_Put_Object(t *testing.T) {
 		}
 	}
 
-	m := paths.NewMapPath("wag/Acls/WatchPut", codecs.NewJsonCodec[TestObject]())
+	m := paths.NewMapPath("wag/Acls/WatchPut", codecs.NewJsonCodec[TestObject](), false)
 	ch := m.Watch(ctx, cli)
 
 	testObject := TestObject{
@@ -355,7 +355,7 @@ func TestMapPath_Watch_Delete(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := paths.NewMapPath("wag/Acls/WatchDel", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/WatchDel", codecs.NewJsonCodec[string](), false)
 
 	// Seed before watching so the put event doesn't interfere
 	if err := m.Key("alpha").Put(ctx, cli, "value1"); err != nil {
@@ -387,7 +387,7 @@ func TestMapPath_Watch_ContextCancel(t *testing.T) {
 	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	m := paths.NewMapPath("wag/Acls/WatchCancel", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/WatchCancel", codecs.NewJsonCodec[string](), false)
 	ch := m.Watch(ctx, cli)
 
 	cancel()
@@ -402,7 +402,7 @@ func TestMapPath_Watch_DoesNotReceiveOtherPrefixes(t *testing.T) {
 	defer cleanup()
 	ctx := t.Context()
 
-	m := paths.NewMapPath("wag/Acls/Isolated", codecs.NewJsonCodec[string]())
+	m := paths.NewMapPath("wag/Acls/Isolated", codecs.NewJsonCodec[string](), false)
 	ch := m.Watch(ctx, cli)
 
 	// Write to a different prefix — should not appear on ch

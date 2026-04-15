@@ -162,8 +162,9 @@ func DynamicCollectionTx[T any](t *TxnConditional, path paths.MapSlicePath[T], o
 //	memberHandle := ListTx(thenCond, Paths.GroupMembership.Key(username), clientv3.WithKeysOnly())
 func ListTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...clientv3.OpOption) *ListHandle[T] {
 	result := &ListHandle[T]{
-		codec:  path.Codec(),
-		prefix: path.Prefix(),
+		codec:        path.Codec(),
+		prefix:       path.Prefix(),
+		presenceOnly: path.PresenceOnly(),
 	}
 
 	options := append([]clientv3.OpOption{clientv3.WithPrefix()}, opts...)
@@ -453,6 +454,8 @@ type ListHandle[T any] struct {
 	keys   []string     // populated for keys-only scans
 	codec  codecs.Codec[T]
 	prefix string
+
+	presenceOnly bool
 }
 
 func (h *ListHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
@@ -483,9 +486,16 @@ func (h *ListHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 	h.items = make(map[string]T, len(rangeResp.Kvs))
 	for _, kv := range rangeResp.Kvs {
 		key := strings.TrimPrefix(string(kv.Key), h.prefix)
-		val, err := h.codec.Decode(kv.Value)
-		if err != nil {
-			return fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+
+		var (
+			val T
+			err error
+		)
+		if !h.presenceOnly {
+			val, err = h.codec.Decode(kv.Value)
+			if err != nil {
+				return fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+			}
 		}
 		h.items[key] = val
 	}
@@ -502,6 +512,10 @@ func (h *ListHandle[T]) Entries() (map[string]T, error) {
 		return nil, h.err
 	}
 	if h.items == nil && len(h.keys) != 0 {
+		return nil, ErrKeysOnly
+	}
+
+	if h.presenceOnly {
 		return nil, ErrKeysOnly
 	}
 

@@ -49,12 +49,15 @@ type Config struct {
 
 	SomethingElse struct {
 		another.SomeType
-		Extra string
+		Extra   string
+		Methods []string
 	}
 
 	Name   string
 	Labels map[string]string
 	Tags   []string `tetcd:"compress"`
+
+	Methods1 []string
 
 	// should be skipped
 	ignored      string

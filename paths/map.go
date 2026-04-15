@@ -13,14 +13,16 @@ import (
 // MapPath represents an etcd prefix where each key is a map entry.
 // e.g. wag/Acls/Groups/{k} -> V
 type MapPath[Inner any] struct {
-	prefix string
-	codec  codecs.Codec[Inner]
+	prefix       string
+	codec        codecs.Codec[Inner]
+	presenceOnly bool
 }
 
-func NewMapPath[Inner any](prefix string, codec codecs.Codec[Inner]) MapPath[Inner] {
+func NewMapPath[Inner any](prefix string, codec codecs.Codec[Inner], presenceOnly bool) MapPath[Inner] {
 	return MapPath[Inner]{
-		prefix: prefix,
-		codec:  codec,
+		prefix:       prefix,
+		codec:        codec,
+		presenceOnly: presenceOnly,
 	}
 }
 
@@ -30,6 +32,10 @@ func (m MapPath[V]) Codec() codecs.Codec[V] {
 
 func (m MapPath[V]) Prefix() string {
 	return m.prefix
+}
+
+func (m MapPath[V]) PresenceOnly() bool {
+	return m.presenceOnly
 }
 
 func (m MapPath[V]) Key(k string) Path[V] {

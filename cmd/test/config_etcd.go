@@ -120,9 +120,15 @@ func (autoTypeConfigSomethingElse) Method() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/SomethingElse/Method", codecs.NewJsonCodec[string]())
 }
 
+// Methods() is a map path with prefix wagtest/Config/SomethingElse/Methods, value type string
+func (autoTypeConfigSomethingElse) Methods() paths.MapPath[string] {
+	return paths.NewMapPath("wagtest/Config/SomethingElse/Methods", codecs.NewJsonCodec[string](), true)
+}
+
 type resultConfigSomethingElse struct {
 	another.SomeType
-	Extra string
+	Extra   string
+	Methods []string
 }
 
 // Get fetches all fields of resultConfigSomethingElse in one or more transactions pinned to the same etcd revision.
@@ -130,6 +136,7 @@ func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client) (r
 	txn0 := tetcd.NewTxn(ctx, cli)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Extra())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Method())
+	h0_2 := tetcd.ListTx(txn0.Then(), a.Methods())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -138,6 +145,10 @@ func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client) (r
 		return result, err
 	}
 	result.Method, err = h0_1.Value()
+	if err != nil {
+		return result, err
+	}
+	result.Methods, err = h0_2.Keys()
 	if err != nil {
 		return result, err
 	}
@@ -326,7 +337,12 @@ type autoTypeConfig struct {
 
 // Labels() is a map path with prefix wagtest/Config/Labels, value type string
 func (autoTypeConfig) Labels() paths.MapPath[string] {
-	return paths.NewMapPath("wagtest/Config/Labels", codecs.NewJsonCodec[string]())
+	return paths.NewMapPath("wagtest/Config/Labels", codecs.NewJsonCodec[string](), false)
+}
+
+// Methods1() is a map path with prefix wagtest/Config/Methods1, value type string
+func (autoTypeConfig) Methods1() paths.MapPath[string] {
+	return paths.NewMapPath("wagtest/Config/Methods1", codecs.NewJsonCodec[string](), true)
 }
 
 // Name() KV should contain type string

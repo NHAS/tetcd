@@ -346,6 +346,12 @@ func generateGetAll(n *node, path string) []jen.Code {
 						}
 					}
 				}
+
+				if ut, ok := lp.leaf.typeDef.Underlying().(*types.Slice); ok {
+					if _, ok := ut.Elem().Underlying().(*types.Basic); ok {
+						valueMethod = "Keys"
+					}
+				}
 			}
 
 			body = append(body,
@@ -537,20 +543,20 @@ func generateFunction(f *node, parent *node, path, pathsPkg, codecsPkg string) [
 		case *types.Slice, *types.Array, *types.Map:
 			return generateSliceMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg)
 		default:
-			return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg)
+			return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg, false)
 		}
 
 	case *types.Slice:
 		if f.isCompressed {
 			return generatePathFunction(receiver, f, etcdPath, pathsPkg, codecsPkg)
 		}
-		return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg)
+		return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg, true)
 
 	case *types.Array:
 		if f.isCompressed {
 			return generatePathFunction(receiver, f, etcdPath, pathsPkg, codecsPkg)
 		}
-		return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg)
+		return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg, true)
 
 	default:
 		return generatePathFunction(receiver, f, etcdPath, pathsPkg, codecsPkg)
@@ -571,7 +577,8 @@ func generatePathFunction(receiver *jen.Statement, f *node, etcdPath, pathsPkg, 
 	}
 }
 
-func generateMapFunction(receiver *jen.Statement, f *node, etcdPath string, valueType types.Type, pathsPkg, codecsPkg string) []jen.Code {
+func generateMapFunction(receiver *jen.Statement, f *node, etcdPath string, valueType types.Type, pathsPkg, codecsPkg string, presenceOnly bool) []jen.Code {
+
 	return []jen.Code{
 		jen.Commentf("%s() is a map path with prefix %s, value type %s", f.name, etcdPath, valueType.String()),
 		jen.Func().Params(receiver).Id(f.name).Params().
@@ -580,6 +587,7 @@ func generateMapFunction(receiver *jen.Statement, f *node, etcdPath string, valu
 				jen.Qual(pathsPkg, "NewMapPath").Call(
 					jen.Lit(etcdPath),
 					jen.Qual(codecsPkg, "NewJsonCodec").Types(typeExpr(valueType)).Call(),
+					jen.Lit(presenceOnly),
 				),
 			)),
 	}
