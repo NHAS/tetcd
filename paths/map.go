@@ -45,6 +45,19 @@ func (m MapPath[V]) Key(k string) Path[V] {
 	}
 }
 
+func (m MapPath[V]) All() Path[V] {
+
+	prefix := m.prefix
+	if !strings.HasSuffix(m.prefix, "/") {
+		prefix += "/"
+	}
+
+	return Path[V]{
+		key:   prefix,
+		codec: m.codec,
+	}
+}
+
 // Get all sub keys stripped of their parent prefix
 func (m MapPath[V]) Keys(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, error) {
 	options := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithKeysOnly()}

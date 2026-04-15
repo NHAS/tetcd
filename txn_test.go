@@ -3,6 +3,7 @@ package tetcd
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -1011,11 +1012,11 @@ func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
 		t.Fatalf("Commit failed: %v", err)
 	}
 
-	prev, err := h.PrevValue()
+	prev, err := h.PrevValues()
 	if err != nil {
-		t.Fatalf("PrevValue() failed: %v", err)
+		t.Fatalf("PrevValues() failed: %v", err)
 	}
-	if prev != "original" {
+	if !slices.Contains(prev, "original") {
 		t.Errorf("expected prev value 'original', got %q", prev)
 	}
 
@@ -1049,7 +1050,7 @@ func TestTxn_DeleteHandle_PrevValue_NotFound_WhenNoPrevKVOption(t *testing.T) {
 		t.Fatalf("Commit failed: %v", err)
 	}
 
-	_, err := h.PrevValue()
+	_, err := h.PrevValues()
 	if err != paths.ErrNotFound {
 		t.Errorf("expected ErrNotFound when WithPrevKV not set, got %v", err)
 	}
@@ -1068,7 +1069,7 @@ func TestTxn_DeleteHandle_PrevValue_KeyMissing(t *testing.T) {
 		t.Fatalf("Commit failed: %v", err)
 	}
 
-	_, err := h.PrevValue()
+	_, err := h.PrevValues()
 	if err != paths.ErrNotFound {
 		t.Errorf("expected ErrNotFound for missing key, got %v", err)
 	}
@@ -1100,7 +1101,7 @@ func TestTxn_DeleteHandle_ErrNotDone(t *testing.T) {
 	if _, err := h.Deleted(); err != ErrNotDone {
 		t.Errorf("Deleted(): expected ErrNotDone before Commit, got %v", err)
 	}
-	if _, err := h.PrevValue(); err != ErrNotDone {
+	if _, err := h.PrevValues(); err != ErrNotDone {
 		t.Errorf("PrevValue(): expected ErrNotDone before Commit, got %v", err)
 	}
 }
@@ -1160,11 +1161,11 @@ func TestTxn_DeleteHandle_InConditionalThenBranch(t *testing.T) {
 		t.Fatal("expected then branch to be taken")
 	}
 
-	prev, err := h.PrevValue()
+	prev, err := h.PrevValues()
 	if err != nil {
 		t.Fatalf("PrevValue() failed: %v", err)
 	}
-	if prev != "to-delete" {
+	if slices.Contains(prev, "to-delete") {
 		t.Errorf("expected prev 'to-delete', got %q", prev)
 	}
 

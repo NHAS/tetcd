@@ -547,13 +547,14 @@ func (h *ListHandle[T]) Prefix() string {
 // value that existed before deletion. Deleted() always returns the count of
 // keys removed.
 type DeleteHandle[T any] struct {
-	err     error
-	prevVal []T
-	hasPrev bool
-	deleted int64
-	key     string
-	codec   codecs.Codec[T]
-	wrote   bool
+	err      error
+	prevVal  []T
+	prevKeys []string
+	hasPrev  bool
+	deleted  int64
+	key      string
+	codec    codecs.Codec[T]
+	wrote    bool
 }
 
 func (h *DeleteHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
@@ -568,12 +569,16 @@ func (h *DeleteHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 
 	if len(delResp.PrevKvs) > 0 {
 
+		h.prevVal = make([]T, 0, len(delResp.PrevKvs))
+		h.prevKeys = make([]string, 0, len(delResp.PrevKvs))
+
 		for _, kv := range delResp.PrevKvs {
 			val, err := h.codec.Decode(kv.Value)
 			if err != nil {
 				return fmt.Errorf("decoding prev kv for %q: %w", h.key, err)
 			}
 			h.prevVal = append(h.prevVal, val)
+			h.prevKeys = append(h.prevKeys, string(kv.Key))
 		}
 		h.hasPrev = true
 	}
@@ -596,10 +601,10 @@ func (h *DeleteHandle[T]) Deleted() (int64, error) {
 	return h.deleted, nil
 }
 
-// PrevValue returns the value that existed before deletion.
+// PrevValues returns the values that existed before deletion.
 // Returns paths.ErrNotFound if the key did not exist or DeleteTx was not
 // called with clientv3.WithPrevKV().
-func (h *DeleteHandle[T]) PrevValue() ([]T, error) {
+func (h *DeleteHandle[T]) PrevValues() ([]T, error) {
 	if !h.wrote {
 		return nil, ErrNotDone
 	}
@@ -610,6 +615,19 @@ func (h *DeleteHandle[T]) PrevValue() ([]T, error) {
 		return nil, paths.ErrNotFound
 	}
 	return h.prevVal, nil
+}
+
+func (h *DeleteHandle[T]) PrevKeys() ([]string, error) {
+	if !h.wrote {
+		return nil, ErrNotDone
+	}
+	if h.err != nil {
+		return nil, h.err
+	}
+	if !h.hasPrev {
+		return nil, paths.ErrNotFound
+	}
+	return h.prevKeys, nil
 }
 
 // DynamicHandle holds the results of a prefix GET for a MapSlicePath.
