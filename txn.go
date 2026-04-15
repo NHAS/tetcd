@@ -548,7 +548,7 @@ func (h *ListHandle[T]) Prefix() string {
 // keys removed.
 type DeleteHandle[T any] struct {
 	err     error
-	prevVal T
+	prevVal []T
 	hasPrev bool
 	deleted int64
 	key     string
@@ -567,11 +567,14 @@ func (h *DeleteHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 	h.deleted = delResp.Deleted
 
 	if len(delResp.PrevKvs) > 0 {
-		val, err := h.codec.Decode(delResp.PrevKvs[0].Value)
-		if err != nil {
-			return fmt.Errorf("decoding prev kv for %q: %w", h.key, err)
+
+		for _, kv := range delResp.PrevKvs {
+			val, err := h.codec.Decode(kv.Value)
+			if err != nil {
+				return fmt.Errorf("decoding prev kv for %q: %w", h.key, err)
+			}
+			h.prevVal = append(h.prevVal, val)
 		}
-		h.prevVal = val
 		h.hasPrev = true
 	}
 
@@ -596,16 +599,15 @@ func (h *DeleteHandle[T]) Deleted() (int64, error) {
 // PrevValue returns the value that existed before deletion.
 // Returns paths.ErrNotFound if the key did not exist or DeleteTx was not
 // called with clientv3.WithPrevKV().
-func (h *DeleteHandle[T]) PrevValue() (T, error) {
-	var zero T
+func (h *DeleteHandle[T]) PrevValue() ([]T, error) {
 	if !h.wrote {
-		return zero, ErrNotDone
+		return nil, ErrNotDone
 	}
 	if h.err != nil {
-		return zero, h.err
+		return nil, h.err
 	}
 	if !h.hasPrev {
-		return zero, paths.ErrNotFound
+		return nil, paths.ErrNotFound
 	}
 	return h.prevVal, nil
 }
