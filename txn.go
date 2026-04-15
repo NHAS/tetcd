@@ -479,23 +479,16 @@ func (h *ListHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 	// etcd sets Value to nil for keys-only responses.
 	keysOnly := rangeResp.Kvs[0].Value == nil
 
-	if keysOnly {
-		h.keys = make([]string, 0, len(rangeResp.Kvs))
-		for _, kv := range rangeResp.Kvs {
-			h.keys = append(h.keys, strings.TrimPrefix(string(kv.Key), h.prefix))
-		}
-		return nil
-	}
-
+	h.keys = make([]string, 0, len(rangeResp.Kvs))
 	h.items = make(map[string]T, len(rangeResp.Kvs))
 	for _, kv := range rangeResp.Kvs {
 		key := strings.TrimPrefix(string(kv.Key), h.prefix)
-
+		h.keys = append(h.keys, key)
 		var (
 			val T
 			err error
 		)
-		if !h.presenceOnly {
+		if !h.presenceOnly && !keysOnly {
 			val, err = h.codec.Decode(kv.Value)
 			if err != nil {
 				return fmt.Errorf("decoding %q: %w", string(kv.Key), err)
