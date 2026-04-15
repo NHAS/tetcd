@@ -18,6 +18,12 @@ type NestedExternal struct {
 	another.SomeType
 }
 
+type CompressedStruct struct {
+	Noot string
+
+	Toaster string
+}
+
 type TLSConfig struct {
 	CertFile string
 	KeyFile  string
@@ -52,6 +58,8 @@ type Config struct {
 		Extra   string
 		Methods []string
 	}
+
+	CompressMe CompressedStruct `tetcd:"compress"`
 
 	Name   string
 	Labels map[string]string

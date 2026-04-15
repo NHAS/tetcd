@@ -43,6 +43,10 @@ type SubTxn struct {
 	succeeded bool
 }
 
+func (s *SubTxn) Succeeded() bool {
+	return s.succeeded
+}
+
 type txnMode int
 
 const (

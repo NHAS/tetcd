@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/types"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -174,15 +175,13 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 			return nil, fmt.Errorf("use of abstract types for concrete storage: %s", field.Name())
 
 		case *types.Struct:
-			child, err := buildNode(field.Name(), ft, false)
+			child, err := buildNode(field.Name(), ft, isCompress)
 			if err != nil {
 				return nil, err
 			}
 
 			if field.Anonymous() {
-				for k, v := range child.children {
-					result.children[k] = v
-				}
+				maps.Copy(result.children, child.children)
 				continue
 			}
 
