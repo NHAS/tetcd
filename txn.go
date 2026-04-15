@@ -522,7 +522,7 @@ func (h *ListHandle[T]) Entries() (map[string]T, error) {
 	return h.items, nil
 }
 
-// Keys returns the list of sub-keys for a keys-only scan (WithKeysOnly option).
+// Keys returns the list of sub-keys
 // Returns paths.ErrNotFound when no keys were present under the prefix.
 func (h *ListHandle[T]) Keys() ([]string, error) {
 	if h.err != nil {
@@ -532,6 +532,10 @@ func (h *ListHandle[T]) Keys() ([]string, error) {
 		return nil, paths.ErrNotFound
 	}
 	return h.keys, nil
+}
+
+func (h *ListHandle[T]) Prefix() string {
+	return h.prefix
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +617,10 @@ type DynamicHandle[T any] struct {
 	codec        codecs.Codec[T]
 	prefix       string
 	presenceOnly bool
+}
+
+func (h *DynamicHandle[T]) Prefix() string {
+	return h.prefix
 }
 
 func (h *DynamicHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
