@@ -133,8 +133,8 @@ func TestMapSlicePath_DeleteAll(t *testing.T) {
 		t.Fatalf("DeleteAll() error = %v", err)
 	}
 
-	if num != 3 {
-		t.Errorf("DeleteAll() deleted %d keys, want %d", num, 2)
+	if num.Count != 3 {
+		t.Errorf("DeleteAll() deleted %d keys, want %d", num.Count, 3)
 	}
 
 	_, got, err := m.List(ctx, cli)
@@ -155,8 +155,8 @@ func TestMapSlicePath_DeleteAll_Empty(t *testing.T) {
 
 	if num, err := m.DeleteAll(ctx, cli); err != nil {
 		t.Fatalf("DeleteAll() on empty prefix error = %v", err)
-	} else if num != 0 {
-		t.Errorf("DeleteAll() on empty prefix deleted %d keys, want 0", num)
+	} else if num.Count != 0 {
+		t.Errorf("DeleteAll() on empty prefix deleted %d keys, want 0", num.Count)
 	}
 }
 

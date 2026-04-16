@@ -99,11 +99,43 @@ func (m MapSlicePath[V]) Entries(ctx context.Context, cli *clientv3.Client, opts
 	return result, nil
 }
 
-func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) (int64, error) {
-	resp, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
+type DeleteResult[T any] struct {
+	Count int64
+
+	PrevValues []T
+	PrevKeys   []string
+}
+
+func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (DeleteResult[V], error) {
+	options := []clientv3.OpOption{clientv3.WithPrefix()}
+	options = append(options, opts...)
+
+	resp, err := cli.Delete(ctx, m.prefix, options...)
 	if err != nil {
-		return 0, err
+		return DeleteResult[V]{}, err
 	}
 
-	return resp.Deleted, nil
+	result := DeleteResult[V]{
+		Count: resp.Deleted,
+	}
+
+	if len(resp.PrevKvs) > 0 {
+		result.PrevValues = make([]V, 0, len(resp.PrevKvs))
+		result.PrevKeys = make([]string, 0, len(resp.PrevKvs))
+		for _, kv := range resp.PrevKvs {
+
+			// if we were issued with keys only
+			if len(kv.Value) == 0 {
+				v, err := m.codec.Decode(kv.Value)
+				if err != nil {
+					return DeleteResult[V]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+				}
+				result.PrevValues = append(result.PrevValues, v)
+			}
+
+			result.PrevKeys = append(result.PrevKeys, string(kv.Key))
+		}
+	}
+
+	return result, nil
 }
