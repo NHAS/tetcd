@@ -125,8 +125,12 @@ func (m MapPath[V]) Delete(ctx context.Context, cli *clientv3.Client, k string) 
 	return err
 }
 
-func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) (DeleteResult[V], error) {
-	res, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
+func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (DeleteResult[V], error) {
+
+	options := []clientv3.OpOption{clientv3.WithPrefix()}
+	options = append(options, opts...)
+
+	res, err := cli.Delete(ctx, m.prefix, options...)
 	if err != nil {
 		return DeleteResult[V]{}, err
 	}
