@@ -2,6 +2,7 @@ package paths
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -124,13 +125,35 @@ func (m MapPath[V]) Delete(ctx context.Context, cli *clientv3.Client, k string) 
 	return err
 }
 
-func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) (int64, error) {
-	delResponse, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
+func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) (DeleteResult[V], error) {
+	res, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
 	if err != nil {
-		return 0, err
+		return DeleteResult[V]{}, err
 	}
 
-	return delResponse.Deleted, err
+	result := DeleteResult[V]{
+		Count: res.Deleted,
+	}
+
+	if len(res.PrevKvs) > 0 {
+		result.PrevValues = make([]V, 0, len(res.PrevKvs))
+		result.PrevKeys = make([]string, 0, len(res.PrevKvs))
+		for _, kv := range res.PrevKvs {
+
+			// if we were issued with keys only
+			if len(kv.Value) == 0 {
+				v, err := m.codec.Decode(kv.Value)
+				if err != nil {
+					return DeleteResult[V]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+				}
+				result.PrevValues = append(result.PrevValues, v)
+			}
+
+			result.PrevKeys = append(result.PrevKeys, string(kv.Key))
+		}
+	}
+
+	return result, nil
 }
 
 type MapWatchEvent[V any] struct {

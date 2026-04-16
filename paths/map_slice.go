@@ -99,13 +99,6 @@ func (m MapSlicePath[V]) Entries(ctx context.Context, cli *clientv3.Client, opts
 	return result, nil
 }
 
-type DeleteResult[T any] struct {
-	Count int64
-
-	PrevValues []T
-	PrevKeys   []string
-}
-
 func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (DeleteResult[V], error) {
 	options := []clientv3.OpOption{clientv3.WithPrefix()}
 	options = append(options, opts...)

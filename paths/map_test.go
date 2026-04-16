@@ -251,8 +251,8 @@ func TestMapPath_DeleteAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteAll() error = %v", err)
 	}
-	if deleted != 3 {
-		t.Errorf("DeleteAll() deleted %d, want 3", deleted)
+	if deleted.Count != 3 {
+		t.Errorf("DeleteAll() deleted %d, want 3", deleted.Count)
 	}
 
 	_, got, err := m.List(ctx, cli)
@@ -275,8 +275,8 @@ func TestMapPath_DeleteAll_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteAll() error = %v", err)
 	}
-	if deleted != 0 {
-		t.Errorf("DeleteAll() on empty prefix deleted %d, want 0", deleted)
+	if deleted.Count != 0 {
+		t.Errorf("DeleteAll() on empty prefix deleted %d, want 0", deleted.Count)
 	}
 }
 
@@ -364,13 +364,13 @@ func TestMapPath_Watch_Delete(t *testing.T) {
 
 	ch := m.Watch(ctx, cli)
 
-	num, err := m.Key("alpha").Delete(ctx, cli)
+	deleted, err := m.Key("alpha").Delete(ctx, cli)
 	if err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
-	if num != 1 {
-		t.Fatal("removed a different number of keys than expected: ", num)
+	if deleted.Count != 1 {
+		t.Fatal("removed a different number of keys than expected: ", deleted.Count)
 	}
 
 	ev := <-ch

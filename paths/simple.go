@@ -55,14 +55,43 @@ func (p Path[T]) Put(ctx context.Context, cli *clientv3.Client, val T, opts ...c
 	return err
 }
 
-func (p Path[T]) Delete(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (int64, error) {
+type DeleteResult[T any] struct {
+	Count int64
+
+	PrevValues []T
+	PrevKeys   []string
+}
+
+func (p Path[T]) Delete(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (DeleteResult[T], error) {
 
 	res, err := cli.Delete(ctx, p.key, opts...)
 	if err != nil {
-		return 0, err
+		return DeleteResult[T]{}, err
 	}
 
-	return res.Deleted, err
+	result := DeleteResult[T]{
+		Count: res.Deleted,
+	}
+
+	if len(res.PrevKvs) > 0 {
+		result.PrevValues = make([]T, 0, len(res.PrevKvs))
+		result.PrevKeys = make([]string, 0, len(res.PrevKvs))
+		for _, kv := range res.PrevKvs {
+
+			// if we were issued with keys only
+			if len(kv.Value) == 0 {
+				v, err := p.codec.Decode(kv.Value)
+				if err != nil {
+					return DeleteResult[T]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+				}
+				result.PrevValues = append(result.PrevValues, v)
+			}
+
+			result.PrevKeys = append(result.PrevKeys, string(kv.Key))
+		}
+	}
+
+	return result, nil
 }
 
 // Update changes the value of a single key path, and does so safely
