@@ -70,7 +70,7 @@ func (p Path[T]) Delete(ctx context.Context, cli *clientv3.Client, opts ...clien
 // a max of 10 attempt will occur before quitting
 // as such, other than modifying the T value, do not have updateFunc retain state or modify things outside of updateFunc
 // upsert will create the key if it doesnt exist
-func (p Path[T]) Update(ctx context.Context, cli *clientv3.Client, updateFunc func(T) (T, error), upsert bool) error {
+func (p Path[T]) Update(ctx context.Context, cli *clientv3.Client, upsert bool, updateFunc func(T) (T, error)) error {
 	//https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go#L382
 
 	if updateFunc == nil {
