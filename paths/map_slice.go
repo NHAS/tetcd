@@ -78,6 +78,27 @@ func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ..
 	return order, result, nil
 }
 
+func (m MapSlicePath[V]) Entries(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]V, error) {
+	options := []clientv3.OpOption{clientv3.WithPrefix()}
+	options = append(options, opts...)
+
+	resp, err := cli.Get(ctx, m.prefix, options...)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]V, 0, len(resp.Kvs))
+
+	for _, kv := range resp.Kvs {
+		v, err := m.codec.Decode(kv.Value)
+		if err != nil {
+			return nil, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+		}
+		result = append(result, v)
+	}
+
+	return result, nil
+}
+
 func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client) (int64, error) {
 	resp, err := cli.Delete(ctx, m.prefix, clientv3.WithPrefix())
 	if err != nil {
