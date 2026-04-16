@@ -85,6 +85,27 @@ func (m MapPath[V]) Keys(ctx context.Context, cli *clientv3.Client, opts ...clie
 	return result, nil
 }
 
+func (m MapPath[V]) Entries(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]V, error) {
+	options := []clientv3.OpOption{clientv3.WithPrefix()}
+	options = append(options, opts...)
+
+	resp, err := cli.Get(ctx, m.prefix, options...)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]V, 0, len(resp.Kvs))
+
+	for _, kv := range resp.Kvs {
+		v, err := m.codec.Decode(kv.Value)
+		if err != nil {
+			return nil, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+		}
+		result = append(result, v)
+	}
+
+	return result, nil
+}
+
 // List returns the keys of the value in the order returned by etcd
 // and then a map of those keys to values
 func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, map[string]V, error) {
