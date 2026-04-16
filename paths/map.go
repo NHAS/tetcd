@@ -58,12 +58,20 @@ func (m MapPath[V]) All() Path[V] {
 	}
 }
 
+func (m MapPath[V]) Count(ctx context.Context, cli *clientv3.Client) (int64, error) {
+	resp, err := cli.Get(ctx, m.prefix, clientv3.WithPrefix(), clientv3.WithCountOnly())
+	if err != nil {
+		return 0, err
+	}
+	return resp.Count, nil
+}
+
 // Get all sub keys stripped of their parent prefix
 func (m MapPath[V]) Keys(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, error) {
 	options := []clientv3.OpOption{clientv3.WithPrefix(), clientv3.WithKeysOnly()}
 	options = append(options, opts...)
 
-	resp, err := cli.Get(context.Background(), m.prefix, options...)
+	resp, err := cli.Get(ctx, m.prefix, options...)
 	if err != nil {
 		return nil, err
 	}
