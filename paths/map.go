@@ -166,7 +166,7 @@ func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, opts ..
 		for _, kv := range res.PrevKvs {
 
 			// if we were issued with keys only
-			if len(kv.Value) == 0 {
+			if len(kv.Value) != 0 {
 				v, err := m.codec.Decode(kv.Value)
 				if err != nil {
 					return DeleteResult[V]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
