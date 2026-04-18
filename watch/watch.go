@@ -86,6 +86,8 @@ func Watch[T any](
 				// Drain all events in this key's queue before picking up next work item
 				for {
 					select {
+					case <-ctx.Done():
+						return
 					case event, ok := <-queue:
 						if !ok {
 							goto done
@@ -151,8 +153,9 @@ func (s *Watcher[T]) getOrCreateQueue(key string) chan Event[T] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	q, ok := s.queues[key]
+	// potentially add a lru here to remove old map entries
 	if !ok {
-		q = make(chan Event[T], 256)
+		q = make(chan Event[T], 128)
 		s.queues[key] = q
 	}
 	return q
