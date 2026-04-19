@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NHAS/tetcd/codecs"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -27,6 +28,8 @@ type watcher[T any] struct {
 	cancel context.CancelFunc
 
 	errorHandler ErrorHandler[T]
+
+	codec codecs.Codec[T]
 
 	key string
 
@@ -67,33 +70,67 @@ type Callbacks[T any] struct {
 
 type Watcher[T any] struct {
 	watcher *watcher[T]
-
-	Callbacks[T]
 }
 
-func (w *Watcher[T]) Start() error {
+type CallbackOption[T any] func(*Callbacks[T])
+
+func Created[T any](fn CallbackFunc[T]) CallbackOption[T] {
+	return func(c *Callbacks[T]) { c.Created = fn }
+}
+
+func Modified[T any](fn CallbackFunc[T]) CallbackOption[T] {
+	return func(c *Callbacks[T]) { c.Modified = fn }
+}
+
+func Deleted[T any](fn CallbackFunc[T]) CallbackOption[T] {
+	return func(c *Callbacks[T]) { c.Deleted = fn }
+}
+
+func All[T any](fn CallbackFunc[T]) CallbackOption[T] {
+	return func(c *Callbacks[T]) { c.All = fn }
+}
+
+// Start takes a list of callbacks
+// e.g .Start(Created(fn), Modified(fn), Deleted(fn), All(fn))
+// it may return an error if no callbacks are supplied
+// it may block if WithBlock() has been supplied during the creation of the Watcher
+// If multiple of the same type of callback is specified the last one will be used.
+// e.g .Start(Created(fn1), Created(fn2)) will use fn2
+func (w *Watcher[T]) Start(opts ...CallbackOption[T]) error {
 	if w.watcher == nil {
 		return fmt.Errorf("watcher is not initialized")
 	}
 
+	w.watcher.mu.RLock()
 	if w.watcher.started {
+		w.watcher.mu.RUnlock()
 		return errors.New("start has already been called on this watcher")
 	}
+	w.watcher.mu.RUnlock()
 
-	if w.Created == nil && w.Modified == nil && w.Deleted == nil && w.All == nil {
-		return fmt.Errorf("at least one callback must be defined")
-	}
-
+	var err error
 	w.watcher.startOnce.Do(func() {
+
 		w.watcher.mu.Lock()
-		w.watcher.callbacks = w.Callbacks
+		for _, opt := range opts {
+			opt(&w.watcher.callbacks)
+		}
+		w.watcher.started = true
+
 		w.watcher.mu.Unlock()
 
-		w.watcher.started = true
+		if w.watcher.callbacks.Created == nil &&
+			w.watcher.callbacks.Modified == nil &&
+			w.watcher.callbacks.Deleted == nil &&
+			w.watcher.callbacks.All == nil {
+			err = fmt.Errorf("at least one callback must be defined")
+			return
+		}
+
 		w.watcher.start()
 	})
 
-	return nil
+	return err
 }
 
 func (w *Watcher[T]) Close() error {
@@ -117,7 +154,7 @@ func WithErrorHandler[T any](errorHandler ErrorHandler[T]) opFunc[T] {
 
 func WithContext[T any](ctx context.Context) opFunc[T] {
 	return func(w *watcher[T]) {
-		if w.ctx == nil {
+		if ctx == nil {
 			return
 		}
 
@@ -141,6 +178,7 @@ func WithBlock[T any]() opFunc[T] {
 func NewWatch[T any](
 	etcd *clientv3.Client,
 	key string,
+	codec codecs.Codec[T],
 	opFuncs ...opFunc[T],
 ) *Watcher[T] {
 
@@ -150,8 +188,9 @@ func NewWatch[T any](
 
 		queues: make(map[string]chan Event[T]),
 
-		etcd: etcd,
-		key:  key,
+		codec: codec,
+		etcd:  etcd,
+		key:   key,
 
 		// do nothing as the default error handler
 		errorHandler: func(event Event[T], err error, value []byte) {},
@@ -239,7 +278,7 @@ func (s *watcher[T]) producer(wc clientv3.WatchChan) {
 		}
 
 		for _, rawEvent := range watchEvent.Events {
-			event, err := parseEvent[T](rawEvent)
+			event, err := s.parseEvent(rawEvent)
 			if err != nil {
 				b, _ := json.MarshalIndent(event.Current, "", "    ")
 				s.errorHandler(event, fmt.Errorf("failed to parse event: %w", err), b)
@@ -299,7 +338,7 @@ func (s *watcher[T]) applyEvent(ctx context.Context, event Event[T]) {
 	apply(ALL, s.callbacks.All, event)
 }
 
-func parseEvent[T any](event *clientv3.Event) (p Event[T], err error) {
+func (s *watcher[T]) parseEvent(event *clientv3.Event) (p Event[T], err error) {
 	p.Key = string(event.Kv.Key)
 
 	switch event.Type {
@@ -309,25 +348,31 @@ func parseEvent[T any](event *clientv3.Event) (p Event[T], err error) {
 			return p, fmt.Errorf("previous key value is nil for key %q deleted event", p.Key)
 		}
 
-		err = json.Unmarshal(event.PrevKv.Value, &p.Previous)
+		previous, err := s.codec.Decode(event.PrevKv.Value)
 		if err != nil {
 			return p, fmt.Errorf("failed to unmarshal previous entry for key %q deleted event: %w", p.Key, err)
 		}
+		p.Previous = &previous
+
 	case mvccpb.PUT:
 		p.Type = CREATED
-		err = json.Unmarshal(event.Kv.Value, &p.Current)
+
+		current, err := s.codec.Decode(event.Kv.Value)
 		if err != nil {
 			return p, fmt.Errorf("failed to unmarshal current key %q event: %w", p.Key, err)
 		}
+		p.Current = &current
+
 		if event.IsModify() {
 			p.Type = MODIFIED
 			if event.PrevKv == nil {
 				return p, fmt.Errorf("previous key value is nil for key %q modified event", p.Key)
 			}
-			err = json.Unmarshal(event.PrevKv.Value, &p.Previous)
+			previous, err := s.codec.Decode(event.PrevKv.Value)
 			if err != nil {
 				return p, fmt.Errorf("failed to unmarshal previous key %q previous data: %q err: %w", p.Key, event.PrevKv.Value, err)
 			}
+			p.Previous = &previous
 		}
 	default:
 		return p, fmt.Errorf("invalid mvccpb type: %q, this is a bug", event.Type)
