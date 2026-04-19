@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
+	"github.com/NHAS/tetcd/watch"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -181,39 +182,13 @@ func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, opts ..
 	return result, nil
 }
 
-type MapWatchEvent[V any] struct {
-	Key     string
-	Value   V
-	Deleted bool
-}
+func (m MapPath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher[V] {
 
-func (m MapPath[V]) Watch(ctx context.Context, cli *clientv3.Client) <-chan MapWatchEvent[V] {
-	ch := make(chan MapWatchEvent[V])
-
-	go func() {
-		defer close(ch)
-
-		watchCh := cli.Watch(ctx, m.prefix, clientv3.WithPrefix())
-		for resp := range watchCh {
-			for _, ev := range resp.Events {
-				k := strings.TrimPrefix(string(ev.Kv.Key), m.prefix+"/")
-
-				if ev.Type == clientv3.EventTypeDelete {
-					var zero V
-					ch <- MapWatchEvent[V]{Key: k, Value: zero, Deleted: true}
-					continue
-				}
-
-				v, err := m.codec.Decode(ev.Kv.Value)
-				if err != nil {
-					// Could return an error channel alongside, but keeping it simple for now
-					continue
-				}
-
-				ch <- MapWatchEvent[V]{Key: k, Value: v}
-			}
-		}
-	}()
-
-	return ch
+	return watch.NewWatch(cli,
+		m.prefix,
+		m.codec,
+		watch.WithPrefix[V](),
+		watch.WithPrefixTrimFunc[V](func(key string) string {
+			return strings.TrimPrefix(key, m.prefix+"/")
+		}))
 }

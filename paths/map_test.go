@@ -3,11 +3,13 @@ package paths_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/paths"
+	"github.com/NHAS/tetcd/watch"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -287,21 +289,45 @@ func TestMapPath_Watch_Put(t *testing.T) {
 	defer cancel()
 
 	m := paths.NewMapPath("wag/Acls/WatchPut", codecs.NewJsonCodec[string](), false)
-	ch := m.Watch(ctx, cli)
+
+	var mu sync.Mutex
+	var received []watch.Event[string]
+
+	w := m.Watch(ctx, cli)
+	if err := w.Start(watch.Created(func(ctx context.Context, e watch.Event[string]) error {
+		mu.Lock()
+		received = append(received, e)
+		mu.Unlock()
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
 
 	if err := m.Key("alpha").Put(ctx, cli, "value1"); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	ev := <-ch
-	if ev.Key != "alpha" {
-		t.Errorf("Watch put event Key = %q, want %q", ev.Key, "alpha")
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(received) > 0
+	}, 3*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(received) == 0 {
+		t.Fatal("expected created event, got none")
 	}
-	if ev.Value != "value1" {
-		t.Errorf("Watch put event Value = %q, want %q", ev.Value, "value1")
+	if received[0].Key != "alpha" {
+		t.Errorf("Watch put event Key = %q, want %q", received[0].Key, "alpha")
 	}
-	if ev.Deleted {
-		t.Error("Watch put event Deleted = true, want false")
+	if received[0].Current == nil || *received[0].Current != "value1" {
+		t.Errorf("Watch put event Current = %v, want %q", received[0].Current, "value1")
+	}
+	if received[0].Type != watch.CREATED {
+		t.Errorf("Watch put event Type = %v, want CREATED", received[0].Type)
 	}
 }
 
@@ -313,15 +339,27 @@ func TestMapPath_Watch_Put_Object(t *testing.T) {
 
 	type TestObject struct {
 		Something string
-
-		Number int
-		Fronk  struct {
+		Number    int
+		Fronk     struct {
 			Nested string
 		}
 	}
 
-	m := paths.NewMapPath("wag/Acls/WatchPut", codecs.NewJsonCodec[TestObject](), false)
-	ch := m.Watch(ctx, cli)
+	m := paths.NewMapPath("wag/Acls/WatchPutObject", codecs.NewJsonCodec[TestObject](), false)
+
+	var mu sync.Mutex
+	var received []watch.Event[TestObject]
+
+	w := m.Watch(ctx, cli)
+	if err := w.Start(watch.Created(func(ctx context.Context, e watch.Event[TestObject]) error {
+		mu.Lock()
+		received = append(received, e)
+		mu.Unlock()
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
 
 	testObject := TestObject{
 		Something: "test",
@@ -337,18 +375,28 @@ func TestMapPath_Watch_Put_Object(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	ev := <-ch
-	if ev.Key != "alpha" {
-		t.Errorf("Watch put event Key = %q, want %q", ev.Key, "alpha")
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(received) > 0
+	}, 3*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(received) == 0 {
+		t.Fatal("expected created event, got none")
 	}
-	if ev.Value != testObject {
-		t.Errorf("Watch put event Value = %v, want %v", ev.Value, testObject)
+	if received[0].Key != "alpha" {
+		t.Errorf("Watch put event Key = %q, want %q", received[0].Key, "alpha")
 	}
-	if ev.Deleted {
-		t.Error("Watch put event Deleted = true, want false")
+	if received[0].Current == nil || *received[0].Current != testObject {
+		t.Errorf("Watch put event Current = %v, want %v", received[0].Current, testObject)
+	}
+	if received[0].Type != watch.CREATED {
+		t.Errorf("Watch put event Type = %v, want CREATED", received[0].Type)
 	}
 }
-
 func TestMapPath_Watch_Delete(t *testing.T) {
 	cli, cleanup := setupEtcdContainer(t)
 	defer cleanup()
@@ -357,28 +405,49 @@ func TestMapPath_Watch_Delete(t *testing.T) {
 
 	m := paths.NewMapPath("wag/Acls/WatchDel", codecs.NewJsonCodec[string](), false)
 
-	// Seed before watching so the put event doesn't interfere
 	if err := m.Key("alpha").Put(ctx, cli, "value1"); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	ch := m.Watch(ctx, cli)
+	var mu sync.Mutex
+	var received []watch.Event[string]
+
+	w := m.Watch(ctx, cli)
+	if err := w.Start(watch.Deleted(func(ctx context.Context, e watch.Event[string]) error {
+		mu.Lock()
+		received = append(received, e)
+		mu.Unlock()
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
 
 	deleted, err := m.Key("alpha").Delete(ctx, cli)
 	if err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}
-
 	if deleted.Count != 1 {
 		t.Fatal("removed a different number of keys than expected: ", deleted.Count)
 	}
 
-	ev := <-ch
-	if ev.Key != "alpha" {
-		t.Errorf("Watch delete event Key = %q, want %q", ev.Key, "alpha")
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(received) > 0
+	}, 3*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(received) == 0 {
+		t.Fatal("expected deleted event, got none")
 	}
-	if !ev.Deleted {
-		t.Error("Watch delete event Deleted = false, want true")
+	if received[0].Key != "alpha" {
+		t.Errorf("Watch delete event Key = %q, want %q", received[0].Key, "alpha")
+	}
+	if received[0].Type != watch.DELETED {
+		t.Errorf("Watch delete event Type = %v, want DELETED", received[0].Type)
 	}
 }
 
@@ -388,13 +457,19 @@ func TestMapPath_Watch_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m := paths.NewMapPath("wag/Acls/WatchCancel", codecs.NewJsonCodec[string](), false)
-	ch := m.Watch(ctx, cli)
+
+	w := m.Watch(ctx, cli)
+	if err := w.Start(watch.Created(func(ctx context.Context, e watch.Event[string]) error {
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
 
 	cancel()
 
-	// Drain channel; it should close after context cancellation
-	for range ch {
-	}
+	// Give the watcher time to observe context cancellation without panic or deadlock
+	time.Sleep(200 * time.Millisecond)
+	w.Close()
 }
 
 func TestMapPath_Watch_DoesNotReceiveOtherPrefixes(t *testing.T) {
@@ -403,20 +478,55 @@ func TestMapPath_Watch_DoesNotReceiveOtherPrefixes(t *testing.T) {
 	ctx := t.Context()
 
 	m := paths.NewMapPath("wag/Acls/Isolated", codecs.NewJsonCodec[string](), false)
-	ch := m.Watch(ctx, cli)
 
-	// Write to a different prefix — should not appear on ch
+	var mu sync.Mutex
+	var received []watch.Event[string]
+
+	w := m.Watch(ctx, cli)
+	if err := w.Start(watch.Created(func(ctx context.Context, e watch.Event[string]) error {
+		mu.Lock()
+		received = append(received, e)
+		mu.Unlock()
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
 	if _, err := cli.Put(ctx, "wag/Acls/Other/key", "shouldnotappear"); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	// Write to the watched prefix
 	if err := m.Key("correct").Put(ctx, cli, "yes"); err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	ev := <-ch
-	if ev.Key != "correct" {
-		t.Errorf("Watch received unexpected key %q, want %q", ev.Key, "correct")
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(received) > 0
+	}, 3*time.Second)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(received) == 0 {
+		t.Fatal("expected created event, got none")
+	}
+	for _, ev := range received {
+		if ev.Key != "correct" {
+			t.Errorf("Watch received unexpected key %q, want %q", ev.Key, "correct")
+		}
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

@@ -1165,7 +1165,7 @@ func TestTxn_DeleteHandle_InConditionalThenBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrevValue() failed: %v", err)
 	}
-	if slices.Contains(prev, "to-delete") {
+	if !slices.Contains(prev, "to-delete") {
 		t.Errorf("expected prev 'to-delete', got %q", prev)
 	}
 

@@ -47,6 +47,8 @@ type watcher[T any] struct {
 	callbacks Callbacks[T]
 
 	started bool
+
+	prefixTrimFunc func(string) string
 }
 
 // The Callbacks[T] concurrency model is:
@@ -97,6 +99,10 @@ func All[T any](fn CallbackFunc[T]) CallbackOption[T] {
 // If multiple of the same type of callback is specified the last one will be used.
 // e.g .Start(Created(fn1), Created(fn2)) will use fn2
 func (w *Watcher[T]) Start(opts ...CallbackOption[T]) error {
+	if w == nil {
+		return errors.New("watcher has not been created yet")
+	}
+
 	if w.watcher == nil {
 		return fmt.Errorf("watcher is not initialized")
 	}
@@ -134,6 +140,10 @@ func (w *Watcher[T]) Start(opts ...CallbackOption[T]) error {
 }
 
 func (w *Watcher[T]) Close() error {
+	if w == nil {
+		return nil
+	}
+
 	if w.watcher != nil {
 		return w.watcher.close()
 	}
@@ -171,6 +181,12 @@ func WithPrefix[T any]() opFunc[T] {
 func WithBlock[T any]() opFunc[T] {
 	return func(w *watcher[T]) {
 		w.blocking = true
+	}
+}
+
+func WithPrefixTrimFunc[T any](trimFunc func(string) string) opFunc[T] {
+	return func(w *watcher[T]) {
+		w.prefixTrimFunc = trimFunc
 	}
 }
 
@@ -340,6 +356,9 @@ func (s *watcher[T]) applyEvent(ctx context.Context, event Event[T]) {
 
 func (s *watcher[T]) parseEvent(event *clientv3.Event) (p Event[T], err error) {
 	p.Key = string(event.Kv.Key)
+	if s.prefixTrimFunc != nil {
+		p.Key = s.prefixTrimFunc(string(event.Kv.Key))
+	}
 
 	switch event.Type {
 	case mvccpb.DELETE:

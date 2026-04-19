@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
+	"github.com/NHAS/tetcd/watch"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -131,4 +132,15 @@ func (m MapSlicePath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, op
 	}
 
 	return result, nil
+}
+
+func (m MapSlicePath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher[V] {
+
+	return watch.NewWatch(cli,
+		m.prefix,
+		m.codec,
+		watch.WithPrefix[V](),
+		watch.WithPrefixTrimFunc[V](func(key string) string {
+			return strings.TrimPrefix(key, m.prefix+"/")
+		}))
 }

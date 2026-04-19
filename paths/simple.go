@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/NHAS/tetcd/codecs"
+	"github.com/NHAS/tetcd/watch"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"
@@ -186,4 +188,14 @@ func (p Path[T]) Update(ctx context.Context, cli *clientv3.Client, upsert bool, 
 	}
 
 	return fmt.Errorf("failed to update %q safetly after 10 attempts", p.key)
+}
+
+func (p Path[T]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher[T] {
+
+	return watch.NewWatch(cli,
+		p.key,
+		p.codec,
+		watch.WithPrefixTrimFunc[T](func(key string) string {
+			return filepath.Base(p.key)
+		}))
 }
