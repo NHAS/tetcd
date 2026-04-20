@@ -323,7 +323,7 @@ func TestMapPath_Watch_Put(t *testing.T) {
 	if received[0].Key != "alpha" {
 		t.Errorf("Watch put event Key = %q, want %q", received[0].Key, "alpha")
 	}
-	if received[0].Current == nil || *received[0].Current != "value1" {
+	if !received[0].HasCurrent() || received[0].Current != "value1" {
 		t.Errorf("Watch put event Current = %v, want %q", received[0].Current, "value1")
 	}
 	if received[0].Type != watch.CREATED {
@@ -390,7 +390,7 @@ func TestMapPath_Watch_Put_Object(t *testing.T) {
 	if received[0].Key != "alpha" {
 		t.Errorf("Watch put event Key = %q, want %q", received[0].Key, "alpha")
 	}
-	if received[0].Current == nil || *received[0].Current != testObject {
+	if !received[0].HasCurrent() || received[0].Current != testObject {
 		t.Errorf("Watch put event Current = %v, want %v", received[0].Current, testObject)
 	}
 	if received[0].Type != watch.CREATED {

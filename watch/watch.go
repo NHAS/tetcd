@@ -19,8 +19,25 @@ type CallbackFunc[T any] func(context.Context, Event[T]) error
 type Event[T any] struct {
 	Key      string
 	Type     EventType
-	Current  *T
-	Previous *T
+	Current  T
+	Previous T
+
+	empty struct {
+		current  bool
+		previous bool
+	}
+}
+
+func (e Event[T]) Empty() bool {
+	return e.empty.current && e.empty.previous
+}
+
+func (e Event[T]) HasCurrent() bool {
+	return !e.empty.current
+}
+
+func (e Event[T]) HasPrevious() bool {
+	return !e.empty.previous
 }
 
 type watcher[T any] struct {
@@ -363,35 +380,38 @@ func (s *watcher[T]) parseEvent(event *clientv3.Event) (p Event[T], err error) {
 	switch event.Type {
 	case mvccpb.DELETE:
 		p.Type = DELETED
+		p.empty.current = true
+
 		if event.PrevKv == nil {
 			return p, fmt.Errorf("previous key value is nil for key %q deleted event", p.Key)
 		}
 
-		previous, err := s.codec.Decode(event.PrevKv.Value)
+		p.Previous, err = s.codec.Decode(event.PrevKv.Value)
 		if err != nil {
 			return p, fmt.Errorf("failed to unmarshal previous entry for key %q deleted event: %w", p.Key, err)
 		}
-		p.Previous = &previous
 
 	case mvccpb.PUT:
 		p.Type = CREATED
 
-		current, err := s.codec.Decode(event.Kv.Value)
+		p.Current, err = s.codec.Decode(event.Kv.Value)
 		if err != nil {
 			return p, fmt.Errorf("failed to unmarshal current key %q event: %w", p.Key, err)
 		}
-		p.Current = &current
+		p.empty.previous = true
 
 		if event.IsModify() {
 			p.Type = MODIFIED
+			p.empty.previous = false
+
 			if event.PrevKv == nil {
 				return p, fmt.Errorf("previous key value is nil for key %q modified event", p.Key)
 			}
-			previous, err := s.codec.Decode(event.PrevKv.Value)
+			p.Previous, err = s.codec.Decode(event.PrevKv.Value)
 			if err != nil {
 				return p, fmt.Errorf("failed to unmarshal previous key %q previous data: %q err: %w", p.Key, event.PrevKv.Value, err)
 			}
-			p.Previous = &previous
+
 		}
 	default:
 		return p, fmt.Errorf("invalid mvccpb type: %q, this is a bug", event.Type)

@@ -152,7 +152,7 @@ func TestCreatedCallback(t *testing.T) {
 	if received[0].Type != CREATED {
 		t.Errorf("expected CREATED event, got %v", received[0].Type)
 	}
-	if received[0].Current == nil || received[0].Current.Value != "world" {
+	if !received[0].HasCurrent() || received[0].Current.Value != "world" {
 		t.Errorf("unexpected current value: %+v", received[0].Current)
 	}
 }
@@ -197,10 +197,10 @@ func TestModifiedCallback(t *testing.T) {
 	if received[0].Type != MODIFIED {
 		t.Errorf("expected MODIFIED event, got %v", received[0].Type)
 	}
-	if received[0].Previous == nil || received[0].Previous.Value != "initial" {
+	if !received[0].HasPrevious() || received[0].Previous.Value != "initial" {
 		t.Errorf("unexpected previous value: %+v", received[0].Previous)
 	}
-	if received[0].Current == nil || received[0].Current.Value != "updated" {
+	if !received[0].HasCurrent() || received[0].Current.Value != "updated" {
 		t.Errorf("unexpected current value: %+v", received[0].Current)
 	}
 }
@@ -244,7 +244,7 @@ func TestDeletedCallback(t *testing.T) {
 	if received[0].Type != DELETED {
 		t.Errorf("expected DELETED event, got %v", received[0].Type)
 	}
-	if received[0].Previous == nil || received[0].Previous.Value != "to-delete" {
+	if !received[0].HasPrevious() || received[0].Previous.Value != "to-delete" {
 		t.Errorf("unexpected previous value: %+v", received[0].Previous)
 	}
 }
@@ -506,7 +506,13 @@ func enqueueN(s *watcher[testType], nKeys, eventsPerKey int) {
 				s.enqueue(Event[testType]{
 					Key:     key,
 					Type:    CREATED,
-					Current: &v,
+					Current: v,
+					empty: struct {
+						current  bool
+						previous bool
+					}{
+						previous: true,
+					},
 				})
 			}
 		}(key)
@@ -626,7 +632,12 @@ func TestCallbacksSerializedPerKey(t *testing.T) {
 	const eventsPerKey = 30
 	for i := 0; i < eventsPerKey; i++ {
 		v := testType{Value: fmt.Sprintf("v%d", i)}
-		s.enqueue(Event[testType]{Key: "/test/singlekey", Type: CREATED, Current: &v})
+		s.enqueue(Event[testType]{Key: "/test/singlekey", Type: CREATED, Current: v, empty: struct {
+			current  bool
+			previous bool
+		}{
+			previous: true,
+		}})
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -666,7 +677,13 @@ func TestCallbacksParallelAcrossKeys(t *testing.T) {
 		s.enqueue(Event[testType]{
 			Key:     fmt.Sprintf("/test/key-%d", k),
 			Type:    CREATED,
-			Current: &v,
+			Current: v,
+			empty: struct {
+				current  bool
+				previous bool
+			}{
+				previous: true,
+			},
 		})
 	}
 
@@ -702,7 +719,12 @@ func TestErrorHandlerCalledOnFullQueue(t *testing.T) {
 	// fill queue beyond capacity (128) for a single key
 	v := testType{Value: "fill"}
 	for i := 0; i < 200; i++ {
-		s.enqueue(Event[testType]{Key: "/test/fullkey", Type: CREATED, Current: &v})
+		s.enqueue(Event[testType]{Key: "/test/fullkey", Type: CREATED, Current: v, empty: struct {
+			current  bool
+			previous bool
+		}{
+			previous: true,
+		}})
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -764,7 +786,13 @@ func TestConsumerIdleCleanup(t *testing.T) {
 		s.enqueue(Event[testType]{
 			Key:     fmt.Sprintf("/test/idle-%d", k),
 			Type:    CREATED,
-			Current: &v,
+			Current: v,
+			empty: struct {
+				current  bool
+				previous bool
+			}{
+				previous: true,
+			},
 		})
 	}
 

@@ -76,7 +76,7 @@ func TestWatch_PrefixTrimAlwaysUsesPathKeyBase(t *testing.T) {
 	err := w.Start(
 		watch.All(func(_ context.Context, e watch.Event[testType]) error {
 			v := ""
-			if e.Current != nil {
+			if !e.HasCurrent() {
 				v = e.Current.Value
 			}
 			results <- result{key: e.Key, val: v}
@@ -187,7 +187,7 @@ func TestWatch_DeletedCallbackFires(t *testing.T) {
 	w := p.Watch(context.Background(), etcd)
 	err := w.Start(
 		watch.Deleted(func(_ context.Context, e watch.Event[testType]) error {
-			if e.Previous != nil {
+			if !e.HasPrevious() {
 				prevValue.Store(e.Previous.Value)
 			}
 			deleted.Store(true)
