@@ -11,37 +11,6 @@ import (
 	v3 "go.etcd.io/etcd/client/v3"
 )
 
-type autoTypeConfigCompressMe struct{}
-
-// Noot() KV should contain type string
-func (autoTypeConfigCompressMe) Noot() paths.Path[string] {
-	return paths.NewPath("wagtest/Config/CompressMe/Noot", codecs.NewJsonCodec[string]())
-}
-
-// Toaster() KV should contain type string
-func (autoTypeConfigCompressMe) Toaster() paths.Path[string] {
-	return paths.NewPath("wagtest/Config/CompressMe/Toaster", codecs.NewJsonCodec[string]())
-}
-
-// Get fetches all fields of CompressedStruct in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigCompressMe) Get(ctx context.Context, cli *v3.Client) (result config.CompressedStruct, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Noot())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.Toaster())
-	if err := txn0.Commit(); err != nil {
-		return result, err
-	}
-	result.Noot, err = h0_0.Value()
-	if err != nil {
-		return result, err
-	}
-	result.Toaster, err = h0_1.Value()
-	if err != nil {
-		return result, err
-	}
-	return result, nil
-}
-
 type autoTypeConfigDummy struct{}
 
 // Something5() KV should contain type string
@@ -359,7 +328,6 @@ func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result conf
 }
 
 type autoTypeConfig struct {
-	CompressMe    autoTypeConfigCompressMe
 	Dummy         autoTypeConfigDummy
 	Hello         autoTypeConfigHello
 	Server        autoTypeConfigServer
@@ -367,9 +335,19 @@ type autoTypeConfig struct {
 	TLS           autoTypeConfigTLS
 }
 
+// CompressMe() KV should contain type struct{Noot string; Toaster string}
+func (autoTypeConfig) CompressMe() paths.Path[config.CompressedStruct] {
+	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[config.CompressedStruct]())
+}
+
 // Labels() is a map path with prefix wagtest/Config/Labels, value type string
 func (autoTypeConfig) Labels() paths.MapPath[string] {
 	return paths.NewMapPath("wagtest/Config/Labels", codecs.NewJsonCodec[string](), false)
+}
+
+// MapTest() is a map path with prefix wagtest/Config/MapTest, value type github.com/NHAS/tetcd/cmd/test/config.InnerMap
+func (autoTypeConfig) MapTest() paths.MapPath[config.InnerMap] {
+	return paths.NewMapPath("wagtest/Config/MapTest", codecs.NewJsonCodec[config.InnerMap](), false)
 }
 
 // Methods1() is a map path with prefix wagtest/Config/Methods1, value type string

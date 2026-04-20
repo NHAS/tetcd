@@ -43,6 +43,10 @@ type TLSConfig struct {
 	Groups map[string][]string
 }
 
+type InnerMap struct {
+	Ahhh int
+}
+
 type Config struct {
 	Server ServerConfig
 	TLS    TLSConfig
@@ -63,7 +67,10 @@ type Config struct {
 
 	Name   string
 	Labels map[string]string
-	Tags   []string `tetcd:"compress"`
+
+	MapTest map[string]InnerMap
+
+	Tags []string `tetcd:"compress"`
 
 	Methods1 []string
 

@@ -155,6 +155,10 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 		return result, nil
 	}
 
+	if compress {
+		return result, nil
+	}
+
 	for i := range strct.NumFields() {
 		field := strct.Field(i)
 		tetcdTag := reflect.StructTag(strct.Tag(i)).Get("tetcd")
@@ -563,20 +567,28 @@ func generateFunction(f *node, parent *node, path, pathsPkg, codecsPkg string) [
 }
 
 func generatePathFunction(receiver *jen.Statement, f *node, etcdPath, pathsPkg, codecsPkg string) []jen.Code {
+
+	code := typeExpr(f.typeDef)
+	if _, ok := f.typeDef.(*types.Struct); ok && f.isCompressed && f.namedType != nil {
+		code = typeExpr(f.namedType)
+	}
+
 	return []jen.Code{
 		jen.Commentf("%s() KV should contain type %s", f.name, f.typeDef.String()),
 		jen.Func().Params(receiver).Id(f.name).Params().
-			Qual(pathsPkg, "Path").Types(typeExpr(f.typeDef)).
+			Qual(pathsPkg, "Path").Types(code).
 			Block(jen.Return(
 				jen.Qual(pathsPkg, "NewPath").Call(
 					jen.Lit(etcdPath),
-					jen.Qual(codecsPkg, "NewJsonCodec").Types(typeExpr(f.typeDef)).Call(),
+					jen.Qual(codecsPkg, "NewJsonCodec").Types(code).Call(),
 				),
 			)),
 	}
 }
 
 func generateMapFunction(receiver *jen.Statement, f *node, etcdPath string, valueType types.Type, pathsPkg, codecsPkg string, presenceOnly bool) []jen.Code {
+
+	log.Println("valueType:", valueType)
 
 	return []jen.Code{
 		jen.Commentf("%s() is a map path with prefix %s, value type %s", f.name, etcdPath, valueType.String()),
