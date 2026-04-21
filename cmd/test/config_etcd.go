@@ -23,8 +23,8 @@ type resultConfigDummy struct {
 }
 
 // Get fetches all fields of resultConfigDummy in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client) (result resultConfigDummy, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultConfigDummy, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Something5())
 	if err := txn0.Commit(); err != nil {
 		return result, err
@@ -44,8 +44,8 @@ func (autoTypeConfigHello) Method() paths.Path[string] {
 }
 
 // Get fetches all fields of NestedExternal in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigHello) Get(ctx context.Context, cli *v3.Client) (result config.NestedExternal, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeConfigHello) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.NestedExternal, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Method())
 	if err := txn0.Commit(); err != nil {
 		return result, err
@@ -80,8 +80,8 @@ func (autoTypeConfigServer) Toaster() paths.Path[string] {
 }
 
 // Get fetches all fields of ServerConfig in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client) (result config.ServerConfig, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.ServerConfig, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Host())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Port())
 	h0_2 := tetcd.GetTx(txn0.Then(), a.Test())
@@ -132,8 +132,8 @@ type resultConfigSomethingElse struct {
 }
 
 // Get fetches all fields of resultConfigSomethingElse in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client) (result resultConfigSomethingElse, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultConfigSomethingElse, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Extra())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Method())
 	h0_2 := tetcd.ListTx(txn0.Then(), a.Methods())
@@ -163,8 +163,8 @@ func (autoTypeTLSAhh) Method() paths.Path[string] {
 }
 
 // Get fetches all fields of SomeType in one or more transactions pinned to the same etcd revision.
-func (a autoTypeTLSAhh) Get(ctx context.Context, cli *v3.Client) (result another.SomeType, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeTLSAhh) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Method())
 	if err := txn0.Commit(); err != nil {
 		return result, err
@@ -188,8 +188,8 @@ type resultNestedInTlsDoublyNested struct {
 }
 
 // Get fetches all fields of resultNestedInTlsDoublyNested in one or more transactions pinned to the same etcd revision.
-func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client) (result resultNestedInTlsDoublyNested, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultNestedInTlsDoublyNested, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Arghh())
 	if err := txn0.Commit(); err != nil {
 		return result, err
@@ -230,8 +230,8 @@ type resultTLSNestedInTls struct {
 }
 
 // Get fetches all fields of resultTLSNestedInTls in one or more transactions pinned to the same etcd revision.
-func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client) (result resultTLSNestedInTls, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultTLSNestedInTls, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.DoublyNested.Arghh())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Fronk())
 	h0_2 := tetcd.GetTx(txn0.Then(), a.Number())
@@ -279,8 +279,8 @@ func (autoTypeConfigTLS) KeyFile() paths.Path[string] {
 }
 
 // Get fetches all fields of TLSConfig in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client) (result config.TLSConfig, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli)
+func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.TLSConfig, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Ahh.Method())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.CertFile())
 	h0_2 := tetcd.DynamicCollectionTx(txn0.Then(), a.Groups())

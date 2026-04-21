@@ -16,6 +16,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+const tetcdPkg = "github.com/NHAS/tetcd"
+
 var (
 	FullyQualifiedType string
 	PkgPath            string
@@ -376,6 +378,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 		Params(
 			jen.Id("ctx").Qual("context", "Context"),
 			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
+			jen.Id("opts").Op("...").Qual(tetcdPkg, "TxnOp"),
 		).
 		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
 		Block(body...)
@@ -390,10 +393,9 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 	var handleNames []string
 
 	txnVar := fmt.Sprintf("txn%d", batchIdx)
-	tetcdPkg := "github.com/NHAS/tetcd"
 
 	stmts = append(stmts,
-		jen.Id(txnVar).Op(":=").Qual(tetcdPkg, "NewTxn").Call(jen.Id("ctx"), jen.Id("cli")),
+		jen.Id(txnVar).Op(":=").Qual(tetcdPkg, "NewTxn").Call(jen.Id("ctx"), jen.Id("cli"), jen.Id("opts").Op("...")),
 	)
 
 	for i, lp := range batch {

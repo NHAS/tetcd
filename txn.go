@@ -19,8 +19,6 @@ type Txn struct {
 	ctx context.Context
 	cli *clientv3.Client
 
-	rev int64
-
 	SubTxn
 }
 
@@ -35,6 +33,8 @@ type collection struct {
 }
 
 type SubTxn struct {
+	rev int64
+
 	conditions []clientv3.Cmp
 
 	thens collection
@@ -59,11 +59,27 @@ type handle interface {
 	fail(err error)
 }
 
-func NewTxn(ctx context.Context, cli *clientv3.Client) *Txn {
-	return &Txn{
+type TxnOp func(*Txn)
+
+func WithRev(rev int64) TxnOp {
+	return func(t *Txn) {
+		if rev <= 0 {
+			return
+		}
+
+		t.rev = rev
+	}
+}
+
+func NewTxn(ctx context.Context, cli *clientv3.Client, ops ...TxnOp) *Txn {
+	txn := &Txn{
 		ctx: ctx,
 		cli: cli,
 	}
+	for _, op := range ops {
+		op(txn)
+	}
+	return txn
 }
 
 type TxnConditional struct {
@@ -128,6 +144,10 @@ func GetTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOpti
 		key:   path.Key(),
 	}
 
+	if t.txn.rev != 0 {
+		opts = append(opts, clientv3.WithRev(t.txn.rev))
+	}
+
 	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
 		ops = append(ops, clientv3.OpGet(path.Key(), opts...))
 		handles = append(handles, result)
@@ -147,6 +167,10 @@ func DynamicCollectionTx[T any](t *TxnConditional, path paths.MapSlicePath[T], o
 	}
 
 	options := append([]clientv3.OpOption{clientv3.WithPrefix()}, opts...)
+
+	if t.txn.rev != 0 {
+		opts = append(opts, clientv3.WithRev(t.txn.rev))
+	}
 
 	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
 		ops = append(ops, clientv3.OpGet(path.Prefix(), options...))
@@ -173,6 +197,10 @@ func ListTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...clientv3.Op
 
 	options := append([]clientv3.OpOption{clientv3.WithPrefix()}, opts...)
 
+	if t.txn.rev != 0 {
+		opts = append(opts, clientv3.WithRev(t.txn.rev))
+	}
+
 	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
 		ops = append(ops, clientv3.OpGet(path.Prefix(), options...))
 		handles = append(handles, result)
@@ -189,6 +217,10 @@ func PutTx[T any](t *TxnConditional, path paths.Path[T], value T, opts ...client
 		return fmt.Errorf("failed to encode: %q, %w", path.Key(), err)
 	}
 
+	if t.txn.rev != 0 {
+		opts = append(opts, clientv3.WithRev(t.txn.rev))
+	}
+
 	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
 		ops = append(ops, clientv3.OpPut(path.Key(), string(data), opts...))
 		handles = append(handles, nil) // etcd returns a response for every op; nil = no handle needed
@@ -203,6 +235,10 @@ func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpO
 	result := &DeleteHandle[T]{
 		codec: path.Codec(),
 		key:   path.Key(),
+	}
+
+	if t.txn.rev != 0 {
+		opts = append(opts, clientv3.WithRev(t.txn.rev))
 	}
 
 	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
@@ -225,7 +261,9 @@ func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpO
 //	innerThen, innerElse := elseCond.Conditional(clientv3util.KeyExists(...))
 //	PutTx(innerThen, ...)
 func SubTx(t *TxnConditional) *SubTxn {
-	r := &SubTxn{}
+	r := &SubTxn{
+		rev: t.txn.rev,
+	}
 
 	// Track the sub-txn so resolve() can walk into it after commit.
 	if t.mode == modeThen {
