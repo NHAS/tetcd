@@ -8,6 +8,8 @@ import (
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
 	paths "github.com/NHAS/tetcd/paths"
+	watch "github.com/NHAS/tetcd/watch"
+	specialist "github.com/NHAS/tetcd/watch/specialist"
 	v3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -23,17 +25,22 @@ type resultConfigDummy struct {
 }
 
 // Get fetches all fields of resultConfigDummy in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultConfigDummy, err error) {
+func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultConfigDummy, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Something5())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
 	result.Something5, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full resultConfigDummy struct whenever any sub-key changes.
+func (a autoTypeConfigDummy) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[resultConfigDummy] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/Dummy/", a.Get)
 }
 
 type autoTypeConfigHello struct{}
@@ -44,17 +51,22 @@ func (autoTypeConfigHello) Method() paths.Path[string] {
 }
 
 // Get fetches all fields of NestedExternal in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigHello) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.NestedExternal, err error) {
+func (a autoTypeConfigHello) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.NestedExternal, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Method())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
 	result.Method, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full NestedExternal struct whenever any sub-key changes.
+func (a autoTypeConfigHello) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[config.NestedExternal] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/Hello/", a.Get)
 }
 
 type autoTypeConfigServer struct{}
@@ -80,7 +92,7 @@ func (autoTypeConfigServer) Toaster() paths.Path[string] {
 }
 
 // Get fetches all fields of ServerConfig in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.ServerConfig, err error) {
+func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.ServerConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Host())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Port())
@@ -90,22 +102,27 @@ func (a autoTypeConfigServer) Get(ctx context.Context, cli *v3.Client, opts ...t
 		return result, err
 	}
 	result.Host, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Port, err = h0_1.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Test, err = h0_2.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Toaster, err = h0_3.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full ServerConfig struct whenever any sub-key changes.
+func (a autoTypeConfigServer) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[config.ServerConfig] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/Server/", a.Get)
 }
 
 type autoTypeConfigSomethingElse struct{}
@@ -132,7 +149,7 @@ type resultConfigSomethingElse struct {
 }
 
 // Get fetches all fields of resultConfigSomethingElse in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultConfigSomethingElse, err error) {
+func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultConfigSomethingElse, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Extra())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Method())
@@ -141,18 +158,23 @@ func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client, op
 		return result, err
 	}
 	result.Extra, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Method, err = h0_1.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Methods, err = h0_2.Keys()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full resultConfigSomethingElse struct whenever any sub-key changes.
+func (a autoTypeConfigSomethingElse) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[resultConfigSomethingElse] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/SomethingElse/", a.Get)
 }
 
 type autoTypeTLSAhh struct{}
@@ -163,17 +185,22 @@ func (autoTypeTLSAhh) Method() paths.Path[string] {
 }
 
 // Get fetches all fields of SomeType in one or more transactions pinned to the same etcd revision.
-func (a autoTypeTLSAhh) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
+func (a autoTypeTLSAhh) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Method())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
 	result.Method, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full SomeType struct whenever any sub-key changes.
+func (a autoTypeTLSAhh) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[another.SomeType] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/Ahh/", a.Get)
 }
 
 type autoTypeNestedInTlsDoublyNested struct{}
@@ -188,17 +215,22 @@ type resultNestedInTlsDoublyNested struct {
 }
 
 // Get fetches all fields of resultNestedInTlsDoublyNested in one or more transactions pinned to the same etcd revision.
-func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultNestedInTlsDoublyNested, err error) {
+func (a autoTypeNestedInTlsDoublyNested) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultNestedInTlsDoublyNested, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Arghh())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
 	result.Arghh, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full resultNestedInTlsDoublyNested struct whenever any sub-key changes.
+func (a autoTypeNestedInTlsDoublyNested) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[resultNestedInTlsDoublyNested] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/NestedInTls/DoublyNested/", a.Get)
 }
 
 type autoTypeTLSNestedInTls struct {
@@ -230,7 +262,7 @@ type resultTLSNestedInTls struct {
 }
 
 // Get fetches all fields of resultTLSNestedInTls in one or more transactions pinned to the same etcd revision.
-func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result resultTLSNestedInTls, err error) {
+func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultTLSNestedInTls, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.DoublyNested.Arghh())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.Fronk())
@@ -240,22 +272,27 @@ func (a autoTypeTLSNestedInTls) Get(ctx context.Context, cli *v3.Client, opts ..
 		return result, err
 	}
 	result.DoublyNested.Arghh, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Fronk, err = h0_1.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Number, err = h0_2.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Something, err = h0_3.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full resultTLSNestedInTls struct whenever any sub-key changes.
+func (a autoTypeTLSNestedInTls) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[resultTLSNestedInTls] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/NestedInTls/", a.Get)
 }
 
 type autoTypeConfigTLS struct {
@@ -279,7 +316,7 @@ func (autoTypeConfigTLS) KeyFile() paths.Path[string] {
 }
 
 // Get fetches all fields of TLSConfig in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.TLSConfig, err error) {
+func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.TLSConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
 	h0_0 := tetcd.GetTx(txn0.Then(), a.Ahh.Method())
 	h0_1 := tetcd.GetTx(txn0.Then(), a.CertFile())
@@ -293,38 +330,43 @@ func (a autoTypeConfigTLS) Get(ctx context.Context, cli *v3.Client, opts ...tetc
 		return result, err
 	}
 	result.Ahh.Method, err = h0_0.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.CertFile, err = h0_1.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.Groups, err = h0_2.Keys()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.KeyFile, err = h0_3.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.NestedInTls.DoublyNested.Arghh, err = h0_4.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.NestedInTls.Fronk, err = h0_5.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.NestedInTls.Number, err = h0_6.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	result.NestedInTls.Something, err = h0_7.Value()
-	if err != nil {
+	if err != nil && failEarly {
 		return result, err
 	}
 	return result, nil
+}
+
+// Watch returns a Watcher that emits the full TLSConfig struct whenever any sub-key changes.
+func (a autoTypeConfigTLS) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[config.TLSConfig] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/", a.Get)
 }
 
 type autoTypeConfig struct {

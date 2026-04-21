@@ -290,6 +290,7 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 				}
 			}
 			result = append(result, generateGetAll(root, path)...)
+			result = append(result, generateWatcher(root, path)...)
 		}
 	}
 	return result
@@ -362,7 +363,11 @@ func generateGetAll(n *node, path string) []jen.Code {
 			body = append(body,
 				jen.List(jen.Id("result").Add(fieldAccess), jen.Err()).
 					Op("=").Id(handleName).Dot(valueMethod).Call(),
-				jen.If(jen.Err().Op("!=").Nil()).Block(
+				jen.If(
+					jen.Err().Op("!=").Nil().
+						Op("&&").
+						Id("failEarly"),
+				).Block(
 					jen.Return(jen.Id("result"), jen.Err()),
 				),
 			)
@@ -378,10 +383,52 @@ func generateGetAll(n *node, path string) []jen.Code {
 		Params(
 			jen.Id("ctx").Qual("context", "Context"),
 			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
+			jen.Id("failEarly").Bool(),
 			jen.Id("opts").Op("...").Qual(tetcdPkg, "TxnOp"),
 		).
 		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
 		Block(body...)
+
+	return []jen.Code{fn, fn2}
+}
+
+func generateWatcher(n *node, path string) []jen.Code {
+	leaves := collectAllLeaves(n, path)
+	if len(leaves) == 0 {
+		return nil
+	}
+
+	autoTypeName := structTypeName(n.name, path)
+	returnType, returnTypeStr := deriveConcreteTypeName(n, path)
+
+	prefix := filepath.Join(path, n.name)
+	if Prefix != "" {
+		prefix = filepath.Join(Prefix, prefix)
+	}
+
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	fn := jen.Commentf("Watch returns a Watcher that emits the full %s struct whenever any sub-key changes.", returnTypeStr)
+	fn2 := jen.Func().
+		Params(jen.Id("a").Id(autoTypeName)).
+		Id("Watch").
+		Params(
+			jen.Id("ctx").Qual("context", "Context"),
+			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
+		).
+		Op("*").Qual("github.com/NHAS/tetcd/watch", "Watcher").Types(returnType).
+		Block(
+			jen.Return(
+				jen.Qual("github.com/NHAS/tetcd/watch/specialist", "NewAllWatcher").Call(
+					jen.Id("ctx"),
+					jen.Id("cli"),
+					jen.Lit(prefix),
+					jen.Id("a").Dot("Get"),
+				),
+			),
+		)
 
 	return []jen.Code{fn, fn2}
 }

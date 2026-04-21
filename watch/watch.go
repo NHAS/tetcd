@@ -15,6 +15,7 @@ import (
 
 type ErrorHandler[T any] func(event Event[T], err error, value []byte)
 type CallbackFunc[T any] func(context.Context, Event[T]) error
+type EventParser[T any] func(event *clientv3.Event, codec codecs.Codec[T]) (p Event[T], skip bool, err error)
 
 type Event[T any] struct {
 	Key      string
@@ -66,6 +67,7 @@ type watcher[T any] struct {
 	started bool
 
 	prefixTrimFunc func(string) string
+	eventParser    EventParser[T]
 }
 
 // The Callbacks[T] concurrency model is:
@@ -207,6 +209,16 @@ func WithPrefixTrimFunc[T any](trimFunc func(string) string) opFunc[T] {
 	}
 }
 
+func WithEventParser[T any](parser EventParser[T]) opFunc[T] {
+	return func(w *watcher[T]) {
+		if parser == nil {
+			return
+		}
+
+		w.eventParser = parser
+	}
+}
+
 // NewWatch allows you to register a typesafe callback that will be fired when a key, or prefix is modified in etcd.
 func NewWatch[T any](
 	etcd *clientv3.Client,
@@ -228,6 +240,8 @@ func NewWatch[T any](
 		// do nothing as the default error handler
 		errorHandler: func(event Event[T], err error, value []byte) {},
 	}
+
+	s.eventParser = s.defaultEventParser
 
 	for _, op := range opFuncs {
 		op(s)
@@ -311,10 +325,14 @@ func (s *watcher[T]) producer(wc clientv3.WatchChan) {
 		}
 
 		for _, rawEvent := range watchEvent.Events {
-			event, err := s.parseEvent(rawEvent)
+			event, skip, err := s.eventParser(rawEvent, s.codec)
 			if err != nil {
 				b, _ := json.MarshalIndent(event.Current, "", "    ")
 				s.errorHandler(event, fmt.Errorf("failed to parse event: %w", err), b)
+				continue
+			}
+
+			if skip {
 				continue
 			}
 
@@ -371,7 +389,8 @@ func (s *watcher[T]) applyEvent(ctx context.Context, event Event[T]) {
 	apply(ALL, s.callbacks.All, event)
 }
 
-func (s *watcher[T]) parseEvent(event *clientv3.Event) (p Event[T], err error) {
+// the default parser never skips parsing events
+func (s *watcher[T]) defaultEventParser(event *clientv3.Event, codec codecs.Codec[T]) (p Event[T], skip bool, err error) {
 	p.Key = string(event.Kv.Key)
 	if s.prefixTrimFunc != nil {
 		p.Key = s.prefixTrimFunc(string(event.Kv.Key))
@@ -380,23 +399,24 @@ func (s *watcher[T]) parseEvent(event *clientv3.Event) (p Event[T], err error) {
 	switch event.Type {
 	case mvccpb.DELETE:
 		p.Type = DELETED
+
 		p.empty.current = true
 
 		if event.PrevKv == nil {
-			return p, fmt.Errorf("previous key value is nil for key %q deleted event", p.Key)
+			return p, false, fmt.Errorf("previous key value is nil for key %q deleted event", p.Key)
 		}
 
-		p.Previous, err = s.codec.Decode(event.PrevKv.Value)
+		p.Previous, err = codec.Decode(event.PrevKv.Value)
 		if err != nil {
-			return p, fmt.Errorf("failed to unmarshal previous entry for key %q deleted event: %w", p.Key, err)
+			return p, false, fmt.Errorf("failed to unmarshal previous entry for key %q deleted event: %w", p.Key, err)
 		}
 
 	case mvccpb.PUT:
 		p.Type = CREATED
 
-		p.Current, err = s.codec.Decode(event.Kv.Value)
+		p.Current, err = codec.Decode(event.Kv.Value)
 		if err != nil {
-			return p, fmt.Errorf("failed to unmarshal current key %q event: %w", p.Key, err)
+			return p, false, fmt.Errorf("failed to unmarshal current key %q event: %w", p.Key, err)
 		}
 		p.empty.previous = true
 
@@ -405,16 +425,17 @@ func (s *watcher[T]) parseEvent(event *clientv3.Event) (p Event[T], err error) {
 			p.empty.previous = false
 
 			if event.PrevKv == nil {
-				return p, fmt.Errorf("previous key value is nil for key %q modified event", p.Key)
+				return p, false, fmt.Errorf("previous key value is nil for key %q modified event", p.Key)
 			}
-			p.Previous, err = s.codec.Decode(event.PrevKv.Value)
+			p.Previous, err = codec.Decode(event.PrevKv.Value)
 			if err != nil {
-				return p, fmt.Errorf("failed to unmarshal previous key %q previous data: %q err: %w", p.Key, event.PrevKv.Value, err)
+				return p, false, fmt.Errorf("failed to unmarshal previous key %q previous data: %q err: %w", p.Key, event.PrevKv.Value, err)
 			}
 
 		}
+
 	default:
-		return p, fmt.Errorf("invalid mvccpb type: %q, this is a bug", event.Type)
+		return p, false, fmt.Errorf("invalid mvccpb type: %q, this is a bug", event.Type)
 	}
 
 	return
