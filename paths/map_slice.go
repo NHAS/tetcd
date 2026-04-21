@@ -26,7 +26,15 @@ type MapSlicePath[V any] struct {
 }
 
 func NewMapSlicePath[V any](prefix string, codec codecs.Codec[V], presenceOnly bool) MapSlicePath[V] {
-	return MapSlicePath[V]{prefix: prefix, codec: codec, presenceOnly: presenceOnly}
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	return MapSlicePath[V]{
+		prefix:       prefix,
+		codec:        codec,
+		presenceOnly: presenceOnly,
+	}
 }
 
 func (m MapSlicePath[V]) Codec() codecs.Codec[V] { return m.codec }

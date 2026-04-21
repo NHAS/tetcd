@@ -21,6 +21,10 @@ type MapPath[Inner any] struct {
 }
 
 func NewMapPath[Inner any](prefix string, codec codecs.Codec[Inner], presenceOnly bool) MapPath[Inner] {
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
 	return MapPath[Inner]{
 		prefix:       prefix,
 		codec:        codec,
@@ -43,19 +47,6 @@ func (m MapPath[V]) PresenceOnly() bool {
 func (m MapPath[V]) Key(k string) Path[V] {
 	return Path[V]{
 		key:   filepath.Join(m.prefix, k),
-		codec: m.codec,
-	}
-}
-
-func (m MapPath[V]) All() Path[V] {
-
-	prefix := m.prefix
-	if !strings.HasSuffix(m.prefix, "/") {
-		prefix += "/"
-	}
-
-	return Path[V]{
-		key:   prefix,
 		codec: m.codec,
 	}
 }

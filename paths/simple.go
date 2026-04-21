@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/watch"
@@ -21,6 +22,8 @@ type Path[T any] struct {
 }
 
 func NewPath[T any](key string, codec codecs.Codec[T]) Path[T] {
+	key = strings.TrimSuffix(key, "/")
+
 	return Path[T]{
 		key:   key,
 		codec: codec,

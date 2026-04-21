@@ -250,6 +250,26 @@ func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpO
 	return result
 }
 
+func DeletePrefixTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...clientv3.OpOption) *DeleteHandle[T] {
+	result := &DeleteHandle[T]{
+		codec: path.Codec(),
+		key:   path.Prefix(),
+	}
+
+	opts = append(opts, clientv3.WithPrefix())
+	if t.txn.rev != 0 {
+		opts = append(opts, clientv3.WithRev(t.txn.rev))
+	}
+
+	modify(t.mode, t.txn, func(ops []clientv3.Op, handles []handle) ([]clientv3.Op, []handle) {
+		ops = append(ops, clientv3.OpDelete(path.Prefix(), opts...))
+		handles = append(handles, result)
+		return ops, handles
+	})
+
+	return result
+}
+
 // SubTx creates a nested sub-transaction within the given branch.
 // The sub-transaction's conditions/then/else are built on the returned *SubTxn
 // before Commit() is called on the root Txn.
