@@ -340,6 +340,11 @@ func (autoTypeConfig) CompressMe() paths.Path[config.CompressedStruct] {
 	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[config.CompressedStruct]())
 }
 
+// EnumMap() is a map path with prefix wagtest/Config/EnumMap, value type github.com/NHAS/tetcd/cmd/test/config.Enum
+func (autoTypeConfig) EnumMap() paths.MapPath[config.Enum] {
+	return paths.NewMapPath("wagtest/Config/EnumMap", codecs.NewJsonCodec[config.Enum](), false)
+}
+
 // Labels() is a map path with prefix wagtest/Config/Labels, value type string
 func (autoTypeConfig) Labels() paths.MapPath[string] {
 	return paths.NewMapPath("wagtest/Config/Labels", codecs.NewJsonCodec[string](), false)

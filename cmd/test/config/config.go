@@ -74,7 +74,16 @@ type Config struct {
 
 	Methods1 []string
 
+	EnumMap map[string]Enum
+
 	// should be skipped
 	ignored      string
 	SkippedField string `tetcd:"-"`
 }
+
+type Enum string
+
+const (
+	Thing1 Enum = "woop"
+	Thing2 Enum = "shoop"
+)
