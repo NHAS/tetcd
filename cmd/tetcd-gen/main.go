@@ -379,7 +379,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 	fn := jen.Commentf("Get fetches all fields of %s in one or more transactions pinned to the same etcd revision.", returnTypeStr)
 	fn2 := jen.Func().
 		Params(jen.Id("a").Id(autoTypeName)).
-		Id("Get").
+		Id("GetWithFail").
 		Params(
 			jen.Id("ctx").Qual("context", "Context"),
 			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
@@ -389,7 +389,27 @@ func generateGetAll(n *node, path string) []jen.Code {
 		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
 		Block(body...)
 
-	return []jen.Code{fn, fn2}
+	fn3 := jen.Func().
+		Params(jen.Id("a").Id(autoTypeName)).
+		Id("Get").
+		Params(
+			jen.Id("ctx").Qual("context", "Context"),
+			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
+			jen.Id("opts").Op("...").Qual(tetcdPkg, "TxnOp"),
+		).
+		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
+		Block(
+			jen.Return(
+				jen.Id("a").Dot("GetWithFail").Call(
+					jen.Id("ctx"),
+					jen.Id("cli"),
+					jen.Lit(false),
+					jen.Id("opts").Op("..."),
+				),
+			),
+		)
+
+	return []jen.Code{fn, fn2, fn3}
 }
 
 func generateWatcher(n *node, path string) []jen.Code {
@@ -425,7 +445,7 @@ func generateWatcher(n *node, path string) []jen.Code {
 					jen.Id("ctx"),
 					jen.Id("cli"),
 					jen.Lit(prefix),
-					jen.Id("a").Dot("Get"),
+					jen.Id("a").Dot("GetWithFail"),
 				),
 			),
 		)
