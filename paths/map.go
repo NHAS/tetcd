@@ -98,15 +98,21 @@ func (m MapPath[V]) Entries(ctx context.Context, cli *clientv3.Client, opts ...c
 	return result, nil
 }
 
+type ListResult[V any] struct {
+	Order  []string
+	Values map[string]V
+	Rev    int64
+}
+
 // List returns the keys of the value in the order returned by etcd
 // and then a map of those keys to values
-func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, map[string]V, error) {
+func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (ListResult[V], error) {
 	options := []clientv3.OpOption{clientv3.WithPrefix()}
 	options = append(options, opts...)
 
 	resp, err := cli.Get(ctx, m.prefix, options...)
 	if err != nil {
-		return nil, nil, err
+		return ListResult[V]{}, err
 	}
 
 	result := make(map[string]V, len(resp.Kvs))
@@ -116,13 +122,17 @@ func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clie
 		k := strings.TrimPrefix(string(kv.Key), m.prefix+"/")
 		v, err := m.codec.Decode(kv.Value)
 		if err != nil {
-			return nil, nil, err
+			return ListResult[V]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
 		}
 		result[k] = v
 		keys = append(keys, k)
 	}
 
-	return keys, result, nil
+	return ListResult[V]{
+		Order:  keys,
+		Values: result,
+		Rev:    resp.Header.Revision,
+	}, nil
 }
 
 func (m MapPath[V]) Delete(ctx context.Context, cli *clientv3.Client, k string) error {

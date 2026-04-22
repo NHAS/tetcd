@@ -30,12 +30,12 @@ func TestMapSlicePath_List_Empty(t *testing.T) {
 
 	m := paths.NewMapSlicePath("wag/Thing/Empty", codecs.NewJsonCodec[string](), false)
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("List() = %v, want empty map", got)
+	if len(result.Values) != 0 {
+		t.Errorf("List() = %v, want empty map", result.Values)
 	}
 }
 
@@ -59,16 +59,16 @@ func TestMapSlicePath_List(t *testing.T) {
 		}
 	}
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	if len(got) != len(want) {
-		t.Fatalf("List() returned %d outer keys, want %d", len(got), len(want))
+	if len(result.Values) != len(want) {
+		t.Fatalf("List() returned %d outer keys, want %d", len(result.Values), len(want))
 	}
 	for outerK, innerWant := range want {
-		innerGot, ok := got[outerK]
+		innerGot, ok := result.Values[outerK]
 		if !ok {
 			t.Errorf("List() missing outer key %q", outerK)
 			continue
@@ -97,16 +97,16 @@ func TestMapSlicePath_List_SkipsInvalidDepth(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	if _, exists := got["onlyone"]; exists {
+	if _, exists := result.Values["onlyone"]; exists {
 		t.Error("List() included a single-level key, expected it to be skipped")
 	}
-	if got["outer"]["inner"] != "valid" {
-		t.Errorf("List()[outer][inner] = %q, want %q", got["outer"]["inner"], "valid")
+	if result.Values["outer"]["inner"] != "valid" {
+		t.Errorf("List()[outer][inner] = %q, want %q", result.Values["outer"]["inner"], "valid")
 	}
 }
 
@@ -172,11 +172,11 @@ func TestMapSlicePath_Key_NestedList(t *testing.T) {
 	}
 
 	// Use the inner MapPath directly to list
-	_, inner, err := m.Key("outer").List(ctx, cli)
+	result, err := m.Key("outer").List(ctx, cli)
 	if err != nil {
 		t.Fatalf("inner List() error = %v", err)
 	}
-	if inner["inner"] != "hello" {
-		t.Errorf("inner List()[inner] = %q, want %q", inner["inner"], "hello")
+	if result.Values["inner"] != "hello" {
+		t.Errorf("inner List()[inner] = %q, want %q", result.Values["inner"], "hello")
 	}
 }

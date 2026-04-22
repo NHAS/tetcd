@@ -52,14 +52,14 @@ func (m MapSlicePath[V]) Key(k string) MapPath[V] {
 }
 
 // List reads the entire two-level structure
-func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]string, map[string]map[string]V, error) {
+func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (ListResult[map[string]V], error) {
 
 	options := []clientv3.OpOption{clientv3.WithPrefix()}
 	options = append(options, opts...)
 
 	resp, err := cli.Get(ctx, m.prefix, options...)
 	if err != nil {
-		return nil, nil, err
+		return ListResult[map[string]V]{}, err
 	}
 
 	result := make(map[string]map[string]V, len(resp.Kvs))
@@ -75,7 +75,7 @@ func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ..
 
 		v, err := m.codec.Decode(kv.Value)
 		if err != nil {
-			return nil, nil, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
+			return ListResult[map[string]V]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
 		}
 
 		if result[outerKey] == nil {
@@ -84,7 +84,10 @@ func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ..
 		result[outerKey][innerKey] = v
 		order = append(order, outerKey)
 	}
-	return order, result, nil
+	return ListResult[map[string]V]{
+		Order:  order,
+		Values: result,
+		Rev:    resp.Header.Revision}, nil
 }
 
 func (m MapSlicePath[V]) Entries(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) ([]V, error) {

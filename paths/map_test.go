@@ -144,16 +144,16 @@ func TestMapPath_List(t *testing.T) {
 	}
 	seedMap(t, ctx, cli, m, want)
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(got) != len(want) {
-		t.Fatalf("List() returned %d entries, want %d", len(got), len(want))
+	if len(result.Values) != len(want) {
+		t.Fatalf("List() returned %d entries, want %d", len(result.Values), len(want))
 	}
 	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("List()[%q] = %q, want %q", k, got[k], v)
+		if result.Values[k] != v {
+			t.Errorf("List()[%q] = %q, want %q", k, result.Values[k], v)
 		}
 	}
 }
@@ -165,12 +165,12 @@ func TestMapPath_List_Empty(t *testing.T) {
 
 	m := paths.NewMapPath("wag/Acls/ListEmpty", codecs.NewJsonCodec[string](), false)
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("List() = %v, want empty map", got)
+	if len(result.Values) != 0 {
+		t.Errorf("List() = %v, want empty map", result.Values)
 	}
 }
 
@@ -189,14 +189,14 @@ func TestMapPath_Delete(t *testing.T) {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after Delete() error = %v", err)
 	}
-	if _, exists := got["admins"]; exists {
+	if _, exists := result.Values["admins"]; exists {
 		t.Error("Delete() did not remove key 'admins'")
 	}
-	if _, exists := got["viewers"]; !exists {
+	if _, exists := result.Values["viewers"]; !exists {
 		t.Error("Delete() incorrectly removed key 'viewers'")
 	}
 }
@@ -225,14 +225,14 @@ func TestMapPath_Put(t *testing.T) {
 		"viewers": viewiersObject,
 	})
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after Put() error = %v", err)
 	}
-	if got["admins"] != adminObject {
+	if result.Values["admins"] != adminObject {
 		t.Error("Put() did not correctly set key 'admins'")
 	}
-	if got["viewers"] != viewiersObject {
+	if result.Values["viewers"] != viewiersObject {
 		t.Error("Put() did not correctly set key 'viewers'")
 	}
 }
@@ -257,12 +257,12 @@ func TestMapPath_DeleteAll(t *testing.T) {
 		t.Errorf("DeleteAll() deleted %d, want 3", deleted.Count)
 	}
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after DeleteAll() error = %v", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("List() after DeleteAll() = %v, want empty", got)
+	if len(result.Values) != 0 {
+		t.Errorf("List() after DeleteAll() = %v, want empty", result.Values)
 	}
 }
 
