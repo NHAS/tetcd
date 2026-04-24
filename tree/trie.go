@@ -6,26 +6,19 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/NHAS/tetcd"
+	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/wI2L/jsondiff"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-type Kind int
-
-const (
-	KindIntermediate Kind = iota // just a path segment, no value
-	KindSimple                   // terminal key=value
-	KindMap                      // prefix, owns all children
-)
-
 type treeNode struct {
-	kind     Kind
+	kind     kind.Kind
 	applier  Applier // non-nil for KindSimple and KindMap
 	children map[string]*treeNode
 }
 
-func (t *treeNode) insert(key string, applier Applier) {
+func (t *treeNode) insert(applier Applier) {
+	key, _ := applier.Details()
 	segments := strings.Split(strings.Trim(key, "/"), "/")
 	cur := t
 	for _, seg := range segments {
@@ -35,32 +28,34 @@ func (t *treeNode) insert(key string, applier Applier) {
 		next, ok := cur.children[seg]
 		if !ok {
 			next = &treeNode{
-				kind: KindIntermediate,
+				kind: kind.KindIntermediate,
 			}
 			cur.children[seg] = next
 		}
 		cur = next
 	}
-	cur.kind = applier.Kind()
+	_, cur.kind = applier.Details()
 	cur.applier = applier
 }
 
-func (t *treeNode) apply(txn *tetcd.TxnConditional, op jsondiff.Operation) error {
+func (t *treeNode) apply(op jsondiff.Operation) ([]clientv3.Op, error) {
 	if t.children == nil {
-		return fmt.Errorf("no children in root")
+		return nil, fmt.Errorf("no children in root")
 	}
 
 	segments := strings.Split(strings.Trim(op.Path, "/"), "/")
 
 	eval := func(cur, prev *treeNode) *treeNode {
 		if cur.applier != nil {
-			switch cur.applier.Kind() {
-			case KindSimple:
+
+			_, pathType := cur.applier.Details()
+			switch pathType {
+			case kind.KindSimple:
 				return cur
-			case KindMap:
+			case kind.KindMap:
 				return cur
-			case KindIntermediate:
-				if prev != nil && prev.kind == KindSimple {
+			case kind.KindIntermediate:
+				if prev != nil && prev.kind == kind.KindSimple {
 					return nil
 				}
 			}
@@ -76,7 +71,7 @@ func (t *treeNode) apply(txn *tetcd.TxnConditional, op jsondiff.Operation) error
 
 		next, ok := cur.children[seg]
 		if !ok {
-			return fmt.Errorf("child was not found for %q of path %q", seg, op.Path)
+			return nil, fmt.Errorf("child was not found for %q of path %q", seg, op.Path)
 		}
 
 		cur = next
@@ -86,17 +81,17 @@ func (t *treeNode) apply(txn *tetcd.TxnConditional, op jsondiff.Operation) error
 	target = eval(cur, target)
 
 	if target == nil {
-		return fmt.Errorf("no target")
+		return nil, fmt.Errorf("no target")
 	}
 
 	if target.applier == nil {
-		return fmt.Errorf("no applier found for path %q", op.Path)
+		return nil, fmt.Errorf("no applier found for path %q", op.Path)
 	}
-	if target.kind == KindIntermediate {
-		return fmt.Errorf("applier was of invalid type (Intermediate)")
+	if target.kind == kind.KindIntermediate {
+		return nil, fmt.Errorf("applier was of invalid type (Intermediate)")
 	}
 
-	return target.applier.Apply(txn, op)
+	return target.applier.Apply(op)
 }
 
 type Tree struct {
@@ -106,69 +101,61 @@ type Tree struct {
 
 func NewTree() *Tree {
 	return &Tree{
-		root: &treeNode{},
+		root: &treeNode{
+			kind: kind.KindIntermediate,
+		},
 	}
 }
 
 type Applier interface {
-	Apply(txn *tetcd.TxnConditional, op jsondiff.Operation) error
-	Kind() Kind
+	Apply(op jsondiff.Operation) ([]clientv3.Op, error)
+	Details() (path string, pathType kind.Kind)
 }
 
-func (t *Tree) Register(key string, p Applier) {
+func (t *Tree) Register(p Applier) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.root.insert(key, p)
+	t.root.insert(p)
 }
 
 func (t *Tree) ApplySingle(ctx context.Context, cli *clientv3.Client, op jsondiff.Operation) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	txn := tetcd.NewTxn(ctx, cli)
-	then := txn.Then()
-
-	err := t.root.apply(then, op)
+	etcdOps, err := t.root.apply(op)
 	if err != nil {
 		return err
 	}
 
-	return txn.Commit()
+	_, err = cli.Txn(ctx).Then(etcdOps...).Commit()
+	return err
 }
 
-func (t *Tree) applyWithTxn(txn *tetcd.TxnConditional, ops jsondiff.Patch) error {
+func (t *Tree) applyWithTxn(ctx context.Context, cli *clientv3.Client, ops jsondiff.Patch) error {
+	var etcdOps []clientv3.Op
 	for _, op := range ops {
-
-		err := t.root.apply(txn, op)
+		result, err := t.root.apply(op)
 		if err != nil {
 			return err
 		}
+		etcdOps = append(etcdOps, result...)
 	}
-	return nil
+
+	_, err := cli.Txn(ctx).Then(etcdOps...).Commit()
+	return err
 }
 
-func (t *Tree) ApplyWithTxn(txn *tetcd.TxnConditional, ops jsondiff.Patch) error {
+func (t *Tree) ApplyWithTxn(ctx context.Context, cli *clientv3.Client, ops jsondiff.Patch) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	return t.applyWithTxn(txn, ops)
+	return t.applyWithTxn(ctx, cli, ops)
 }
 
 func (t *Tree) Apply(ctx context.Context, cli *clientv3.Client, ops jsondiff.Patch) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	txn := tetcd.NewTxn(ctx, cli)
-	then := txn.Then()
-
-	if err := t.applyWithTxn(then, ops); err != nil {
-		return err
-	}
-
-	if err := txn.Commit(); err != nil {
-		return err
-	}
-
-	return nil
+	return t.applyWithTxn(ctx, cli, ops)
 }

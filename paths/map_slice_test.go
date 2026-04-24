@@ -137,12 +137,12 @@ func TestMapSlicePath_DeleteAll(t *testing.T) {
 		t.Errorf("DeleteAll() deleted %d keys, want %d", num.Count, 3)
 	}
 
-	_, got, err := m.List(ctx, cli)
+	result, err := m.List(ctx, cli)
 	if err != nil {
 		t.Fatalf("List() after DeleteAll() error = %v", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("List() after DeleteAll() = %v, want empty", got)
+	if len(result.Values) != 0 {
+		t.Errorf("List() after DeleteAll() = %v, want empty", result.Values)
 	}
 }
 

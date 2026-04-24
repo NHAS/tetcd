@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
+	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/NHAS/tetcd/watch"
+	"github.com/wI2L/jsondiff"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"
@@ -22,10 +24,8 @@ type Path[T any] struct {
 }
 
 func NewPath[T any](key string, codec codecs.Codec[T]) Path[T] {
-	key = strings.TrimSuffix(key, "/")
-
 	return Path[T]{
-		key:   key,
+		key:   strings.TrimSuffix(key, "/"),
 		codec: codec,
 	}
 }
@@ -34,7 +34,13 @@ func (p Path[T]) Codec() codecs.Codec[T] {
 	return p.codec
 }
 
-func (p Path[T]) Key() string { return p.key }
+func (p Path[T]) Details() (string, kind.Kind) {
+	return p.key, kind.KindSimple
+}
+
+func (p Path[T]) Key() string {
+	return p.key
+}
 
 // Get a single key -> value, do not add Op WithPrefix in here use the properly generated map types :)
 func (p Path[T]) Get(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (T, error) {
@@ -84,7 +90,7 @@ func (p Path[T]) Delete(ctx context.Context, cli *clientv3.Client, opts ...clien
 		for _, kv := range res.PrevKvs {
 
 			// if we were issued with keys only
-			if len(kv.Value) == 0 {
+			if len(kv.Value) != 0 {
 				v, err := p.codec.Decode(kv.Value)
 				if err != nil {
 					return DeleteResult[T]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
@@ -201,4 +207,35 @@ func (p Path[T]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher
 		watch.WithPrefixTrimFunc[T](func(key string) string {
 			return filepath.Base(p.key)
 		}))
+}
+
+func (p Path[T]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
+
+	switch op.Type {
+	case jsondiff.OperationAdd, jsondiff.OperationReplace:
+		if op.Value == nil {
+			return nil, fmt.Errorf("no value provided for operation %q: %q", op.Type, p.key)
+		}
+
+		b, err := p.codec.EncodeRaw(op.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to re-encode value for operation %q: %q", op.Type, p.key)
+		}
+
+		if _, err := p.codec.Decode(b); err != nil {
+			return nil, fmt.Errorf("invalid value type for operation %q: %q", op.Type, p.key)
+		}
+
+		return []clientv3.Op{
+			clientv3.OpPut(p.key, string(b)),
+		}, nil
+
+	case jsondiff.OperationRemove:
+		return []clientv3.Op{
+			clientv3.OpDelete(p.key),
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported operation %q: %q", op.Type, p.key)
+	}
 }

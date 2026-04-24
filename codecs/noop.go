@@ -10,6 +10,10 @@ func (NoopCodec[T]) Encode(val T) ([]byte, error) {
 	return nil, nil
 }
 
+func (NoopCodec[T]) EncodeRaw(val any) ([]byte, error) {
+	return nil, nil
+}
+
 func (NoopCodec[T]) Decode(data []byte) (T, error) {
 	var val T
 	return val, nil

@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
+	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/NHAS/tetcd/watch"
+	"github.com/wI2L/jsondiff"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -37,9 +39,17 @@ func NewMapSlicePath[V any](prefix string, codec codecs.Codec[V], presenceOnly b
 	}
 }
 
-func (m MapSlicePath[V]) Codec() codecs.Codec[V] { return m.codec }
+func (m MapSlicePath[V]) Codec() codecs.Codec[V] {
+	return m.codec
+}
 
-func (m MapSlicePath[V]) Prefix() string { return m.prefix }
+func (m MapSlicePath[V]) Prefix() string {
+	return m.prefix
+}
+
+func (m MapSlicePath[T]) Details() (string, kind.Kind) {
+	return m.prefix, kind.KindMap
+}
 
 func (m MapSlicePath[V]) PresenceOnly() bool { return m.presenceOnly }
 
@@ -154,4 +164,8 @@ func (m MapSlicePath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch
 		watch.WithPrefixTrimFunc[V](func(key string) string {
 			return strings.TrimPrefix(key, m.prefix+"/")
 		}))
+}
+
+func (m MapSlicePath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
+	return nil, nil
 }

@@ -8,6 +8,7 @@ import (
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
 	paths "github.com/NHAS/tetcd/paths"
+	tree "github.com/NHAS/tetcd/tree"
 	watch "github.com/NHAS/tetcd/watch"
 	specialist "github.com/NHAS/tetcd/watch/specialist"
 	v3 "go.etcd.io/etcd/client/v3"
@@ -436,4 +437,35 @@ func (autoTypeConfig) Tags() paths.Path[[]string] {
 	return paths.NewPath("wagtest/Config/Tags", codecs.NewJsonCodec[[]string]())
 }
 
-var Config = autoTypeConfig{}
+var (
+	Config = autoTypeConfig{}
+	Differ = tree.NewTree()
+)
+
+// init() builds the tree structure to automatically apply diffs to etcd
+func init() {
+	Differ.Register(Config.CompressMe())
+	Differ.Register(Config.Dummy.Something5())
+	Differ.Register(Config.EnumMap())
+	Differ.Register(Config.Hello.Method())
+	Differ.Register(Config.Labels())
+	Differ.Register(Config.MapTest())
+	Differ.Register(Config.Methods1())
+	Differ.Register(Config.Name())
+	Differ.Register(Config.Server.Host())
+	Differ.Register(Config.Server.Port())
+	Differ.Register(Config.Server.Test())
+	Differ.Register(Config.Server.Toaster())
+	Differ.Register(Config.SomethingElse.Extra())
+	Differ.Register(Config.SomethingElse.Method())
+	Differ.Register(Config.SomethingElse.Methods())
+	Differ.Register(Config.TLS.Ahh.Method())
+	Differ.Register(Config.TLS.CertFile())
+	Differ.Register(Config.TLS.Groups())
+	Differ.Register(Config.TLS.KeyFile())
+	Differ.Register(Config.TLS.NestedInTls.DoublyNested.Arghh())
+	Differ.Register(Config.TLS.NestedInTls.Fronk())
+	Differ.Register(Config.TLS.NestedInTls.Number())
+	Differ.Register(Config.TLS.NestedInTls.Something())
+	Differ.Register(Config.Tags())
+}

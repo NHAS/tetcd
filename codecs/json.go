@@ -1,6 +1,9 @@
 package codecs
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 type JSONCodec[T any] struct{}
 
@@ -12,8 +15,20 @@ func (JSONCodec[T]) Encode(val T) ([]byte, error) {
 	return json.Marshal(val)
 }
 
+func (JSONCodec[T]) EncodeRaw(val any) ([]byte, error) {
+	return json.Marshal(val)
+}
+
 func (JSONCodec[T]) Decode(data []byte) (T, error) {
 	var val T
-	err := json.Unmarshal(data, &val)
-	return val, err
+
+	dec := json.NewDecoder(bytes.NewBuffer(data))
+	dec.DisallowUnknownFields()
+
+	err := dec.Decode(&val)
+	if err != nil {
+		return val, err
+	}
+
+	return val, nil
 }

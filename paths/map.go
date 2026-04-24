@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
+	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/NHAS/tetcd/watch"
+	"github.com/wI2L/jsondiff"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -38,6 +40,10 @@ func (m MapPath[V]) Codec() codecs.Codec[V] {
 
 func (m MapPath[V]) Prefix() string {
 	return m.prefix
+}
+
+func (p MapPath[T]) Details() (string, kind.Kind) {
+	return p.prefix, kind.KindMap
 }
 
 func (m MapPath[V]) PresenceOnly() bool {
@@ -192,4 +198,61 @@ func (m MapPath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watc
 		watch.WithPrefixTrimFunc[V](func(key string) string {
 			return strings.TrimPrefix(key, m.prefix+"/")
 		}))
+}
+
+func (m MapPath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
+
+	// with jsondiff Path doesnt have a trailing slash
+	// e.g
+	// remove /Acls/Groups <nil> -> map[group:administrators:[toaster tester] group:nerds:[toaster tester abc]]
+
+	if op.Path+"/" == m.prefix {
+		op.Path += "/"
+	}
+
+	if !strings.HasPrefix(op.Path, m.prefix) {
+		return nil, fmt.Errorf("the path of diff operation did not start with our map path: %q, map %q", op.Path, m.prefix)
+	}
+
+	// this means the first segment is the map key :)
+	op.Path = strings.TrimPrefix(op.Path, m.prefix)
+
+	parts := strings.SplitN(op.Path, ",", 2)
+
+	etcdKey := filepath.Join(m.prefix, parts[0])
+
+	switch op.Type {
+	case jsondiff.OperationAdd, jsondiff.OperationReplace:
+		if op.Value == nil {
+			return nil, fmt.Errorf("no value provided for operation %q: %q", op.Type, etcdKey)
+		}
+
+		if m.presenceOnly {
+			// presence-only maps store the key, value is empty
+			return []clientv3.Op{
+				clientv3.OpPut(etcdKey, ""),
+			}, nil
+		}
+
+		raw, err := m.codec.EncodeRaw(op.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to re-encode value for operation %q: %q", op.Type, etcdKey)
+		}
+
+		if _, err := m.codec.Decode(raw); err != nil {
+			return nil, fmt.Errorf("invalid value type for operation %q: %q", op.Type, etcdKey)
+		}
+
+		return []clientv3.Op{
+			clientv3.OpPut(etcdKey, string(raw)),
+		}, nil
+
+	case jsondiff.OperationRemove:
+		return []clientv3.Op{
+			clientv3.OpDelete(etcdKey),
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported operation %q: %q", op.Type, etcdKey)
+	}
 }

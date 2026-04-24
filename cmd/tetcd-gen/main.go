@@ -275,8 +275,19 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 	if path == "" {
 		// Root node: emit the var but NOT a Get method
 		result = append(result,
-			jen.Var().Id(root.name).Op("=").Id(typeName).Values(),
-		)
+			jen.Var().Defs(
+				jen.Id(root.name).Op("=").Id(typeName).Values(),
+				jen.Id("Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTree").Call(),
+			))
+
+		// Collect all register calls for init()
+		initBody := buildInitBody(root, root)
+
+		result = append(result, []jen.Code{
+			jen.Commentf("init() builds the tree structure to automatically apply diffs to etcd"),
+			jen.Func().Id("init").Params().
+				Block(initBody...),
+		}...)
 	} else {
 		// Non-root nodes with children get a Get method.
 		// If this node is an anonymous struct, emit a concrete type alias first.
@@ -294,6 +305,29 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 		}
 	}
 	return result
+}
+
+// buildInitBody generates Differ.Register(...) calls for every leaf in the tree.
+func buildInitBody(root *node, n *node) []jen.Code {
+	var stmts []jen.Code
+	leaves := collectAllLeaves(n, "")
+	for _, lp := range leaves {
+		// Build: Differ.Register(root.Sub().Sub().Leaf())
+		chain := jen.Id(root.name)
+		rel := strings.TrimPrefix(lp.path, root.name)
+		rel = strings.TrimPrefix(rel, string(filepath.Separator))
+		if rel != "" {
+			for p := range strings.SplitSeq(rel, string(filepath.Separator)) {
+				chain = chain.Dot(p)
+			}
+		}
+		chain = chain.Dot(lp.leaf.name).Call()
+
+		stmts = append(stmts,
+			jen.Id("Differ").Dot("Register").Call(chain),
+		)
+	}
+	return stmts
 }
 
 func deriveConcreteTypeName(n *node, path string) (jen.Code, string) {
