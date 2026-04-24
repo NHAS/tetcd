@@ -2,6 +2,7 @@ package paths
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -206,20 +207,62 @@ func (m MapPath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
 	// e.g
 	// remove /Acls/Groups <nil> -> map[group:administrators:[toaster tester] group:nerds:[toaster tester abc]]
 
-	if op.Path+"/" == m.prefix {
-		op.Path += "/"
+	// Normalise: strip trailing slash from prefix for comparison
+	trimmedPrefix := strings.TrimSuffix(m.prefix, "/")
+
+	// Case 1: operation targets the whole map (e.g. add /Acls/Noooo <wholemap>)
+	if op.Path == trimmedPrefix {
+		switch op.Type {
+		case jsondiff.OperationAdd, jsondiff.OperationReplace:
+			if op.Value == nil {
+				return nil, fmt.Errorf("no value provided for whole-map operation %q: %q", op.Type, m.prefix)
+			}
+
+			// op.Value should be a map[string]V - marshal it back to JSON then decode as map
+			raw, err := json.Marshal(op.Value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal whole-map value: %w", err)
+			}
+
+			var entries map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &entries); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal whole-map value as map: %w", err)
+			}
+
+			ops := make([]clientv3.Op, 0, len(entries))
+			for k, v := range entries {
+				etcdKey := filepath.Join(m.prefix, k)
+				if m.presenceOnly {
+					ops = append(ops, clientv3.OpPut(etcdKey, ""))
+					continue
+				}
+
+				if _, err := m.codec.Decode(v); err != nil {
+					return nil, fmt.Errorf("invalid value type for key %q: %w", k, err)
+				}
+				ops = append(ops, clientv3.OpPut(etcdKey, string(v)))
+			}
+			return ops, nil
+
+		case jsondiff.OperationRemove:
+			// Delete all keys under prefix
+			return []clientv3.Op{
+				clientv3.OpDelete(m.prefix, clientv3.WithPrefix()),
+			}, nil
+
+		default:
+			return nil, fmt.Errorf("unsupported operation %q on map prefix %q", op.Type, m.prefix)
+		}
 	}
 
+	// Case 2: operation targets a single key within the map
 	if !strings.HasPrefix(op.Path, m.prefix) {
-		return nil, fmt.Errorf("the path of diff operation did not start with our map path: %q, map %q", op.Path, m.prefix)
+		return nil, fmt.Errorf("path %q does not match map prefix %q", op.Path, m.prefix)
 	}
 
-	// this means the first segment is the map key :)
-	op.Path = strings.TrimPrefix(op.Path, m.prefix)
+	mapKey := strings.TrimPrefix(op.Path, m.prefix)
 
-	parts := strings.SplitN(op.Path, ",", 2)
-
-	etcdKey := filepath.Join(m.prefix, parts[0])
+	etcdKey := filepath.Join(m.prefix, mapKey)
 
 	switch op.Type {
 	case jsondiff.OperationAdd, jsondiff.OperationReplace:
@@ -228,10 +271,7 @@ func (m MapPath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
 		}
 
 		if m.presenceOnly {
-			// presence-only maps store the key, value is empty
-			return []clientv3.Op{
-				clientv3.OpPut(etcdKey, ""),
-			}, nil
+			return []clientv3.Op{clientv3.OpPut(etcdKey, "")}, nil
 		}
 
 		raw, err := m.codec.EncodeRaw(op.Value)
@@ -243,14 +283,10 @@ func (m MapPath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
 			return nil, fmt.Errorf("invalid value type for operation %q: %q", op.Type, etcdKey)
 		}
 
-		return []clientv3.Op{
-			clientv3.OpPut(etcdKey, string(raw)),
-		}, nil
+		return []clientv3.Op{clientv3.OpPut(etcdKey, string(raw))}, nil
 
 	case jsondiff.OperationRemove:
-		return []clientv3.Op{
-			clientv3.OpDelete(etcdKey),
-		}, nil
+		return []clientv3.Op{clientv3.OpDelete(etcdKey)}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported operation %q: %q", op.Type, etcdKey)
