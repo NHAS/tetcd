@@ -10,7 +10,6 @@ import (
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/NHAS/tetcd/watch"
-	"github.com/wI2L/jsondiff"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -201,94 +200,87 @@ func (m MapPath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watc
 		}))
 }
 
-func (m MapPath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
+func (m MapPath[V]) Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error) {
 
-	// with jsondiff Path doesnt have a trailing slash
-	// e.g
-	// remove /Acls/Groups <nil> -> map[group:administrators:[toaster tester] group:nerds:[toaster tester abc]]
-
-	// Normalise: strip trailing slash from prefix for comparison
-	trimmedPrefix := strings.TrimSuffix(m.prefix, "/")
-
-	// Case 1: operation targets the whole map (e.g. add /Acls/Noooo <wholemap>)
-	if op.Path == trimmedPrefix {
-		switch op.Type {
-		case jsondiff.OperationAdd, jsondiff.OperationReplace:
-			if op.Value == nil {
-				return nil, fmt.Errorf("no value provided for whole-map operation %q: %q", op.Type, m.prefix)
-			}
-
-			// op.Value should be a map[string]V - marshal it back to JSON then decode as map
-			raw, err := json.Marshal(op.Value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal whole-map value: %w", err)
-			}
-
-			var entries map[string]json.RawMessage
-			if err := json.Unmarshal(raw, &entries); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal whole-map value as map: %w", err)
-			}
-
-			ops := make([]clientv3.Op, 0, len(entries))
-			for k, v := range entries {
-				etcdKey := filepath.Join(m.prefix, k)
-				if m.presenceOnly {
-					ops = append(ops, clientv3.OpPut(etcdKey, ""))
-					continue
-				}
-
-				if _, err := m.codec.Decode(v); err != nil {
-					return nil, fmt.Errorf("invalid value type for key %q: %w", k, err)
-				}
-				ops = append(ops, clientv3.OpPut(etcdKey, string(v)))
-			}
-			return ops, nil
-
-		case jsondiff.OperationRemove:
-			// Delete all keys under prefix
-			return []clientv3.Op{
-				clientv3.OpDelete(m.prefix, clientv3.WithPrefix()),
-			}, nil
-
-		default:
-			return nil, fmt.Errorf("unsupported operation %q on map prefix %q", op.Type, m.prefix)
-		}
+	if string(change) == "null" {
+		return []clientv3.Op{
+			clientv3.OpDelete(m.prefix, clientv3.WithPrefix()),
+		}, nil
 	}
 
-	// Case 2: operation targets a single key within the map
-	if !strings.HasPrefix(op.Path, m.prefix) {
-		return nil, fmt.Errorf("path %q does not match map prefix %q", op.Path, m.prefix)
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(change, &entries); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map patch for prefix %q: %w", m.prefix, err)
 	}
 
-	mapKey := strings.TrimPrefix(op.Path, m.prefix)
+	ops := make([]clientv3.Op, 0, len(entries))
 
-	etcdKey := filepath.Join(m.prefix, mapKey)
+	mergeGetOps := make([]clientv3.Op, 0, len(entries))
 
-	switch op.Type {
-	case jsondiff.OperationAdd, jsondiff.OperationReplace:
-		if op.Value == nil {
-			return nil, fmt.Errorf("no value provided for operation %q: %q", op.Type, etcdKey)
+	type merge struct {
+		key  string
+		data json.RawMessage
+	}
+
+	mergeData := make([]merge, 0, len(entries))
+	for k, v := range entries {
+		etcdKey := filepath.Join(m.prefix, k)
+
+		// null value means delete this key
+		if string(v) == "null" {
+			ops = append(ops, clientv3.OpDelete(etcdKey))
+			continue
 		}
 
 		if m.presenceOnly {
-			return []clientv3.Op{clientv3.OpPut(etcdKey, "")}, nil
+			ops = append(ops, clientv3.OpPut(etcdKey, ""))
+			continue
 		}
 
-		raw, err := m.codec.EncodeRaw(op.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to re-encode value for operation %q: %q", op.Type, etcdKey)
-		}
-
-		if _, err := m.codec.Decode(raw); err != nil {
-			return nil, fmt.Errorf("invalid value type for operation %q: %q", op.Type, etcdKey)
-		}
-
-		return []clientv3.Op{clientv3.OpPut(etcdKey, string(raw))}, nil
-
-	case jsondiff.OperationRemove:
-		return []clientv3.Op{clientv3.OpDelete(etcdKey)}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported operation %q: %q", op.Type, etcdKey)
+		mergeGetOps = append(mergeGetOps, clientv3.OpGet(etcdKey))
+		mergeData = append(mergeData, merge{key: etcdKey, data: v})
 	}
+
+	if len(mergeGetOps) == 0 {
+		return ops, nil
+	}
+
+	resp, err := cli.Txn(ctx).Then(mergeGetOps...).Commit()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get previous values to merge: %w", err)
+	}
+
+	for i, response := range resp.Responses {
+
+		if response.GetResponseRange() == nil {
+			return nil, fmt.Errorf("failed to get the same number of responses for merges than issued")
+		}
+
+		var value V
+
+		// this is a new key, just apply the merge directly
+		if len(response.GetResponseRange().Kvs) > 0 {
+			kv := response.GetResponseRange().Kvs[0]
+
+			err := m.codec.DecodeToPointer(kv.Value, &value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid initial type for key %q: %w", mergeData[i].key, err)
+			}
+		}
+
+		// this is only valid if the codec supports partial updates like the json standard library
+		// this is a limitation of this implementation
+		err = m.codec.DecodeToPointer(mergeData[i].data, &value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply merged for key %q: %w", mergeData[i].key, err)
+		}
+
+		merged, err := m.codec.Encode(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode merged value for key %q: %w", mergeData[i].key, err)
+		}
+
+		ops = append(ops, clientv3.OpPut(mergeData[i].key, string(merged)))
+	}
+	return ops, nil
 }

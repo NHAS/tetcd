@@ -2,6 +2,7 @@ package paths
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -9,7 +10,6 @@ import (
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/NHAS/tetcd/watch"
-	"github.com/wI2L/jsondiff"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -166,6 +166,6 @@ func (m MapSlicePath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch
 		}))
 }
 
-func (m MapSlicePath[V]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
+func (m MapSlicePath[V]) Apply(change json.RawMessage) ([]clientv3.Op, error) {
 	return nil, nil
 }

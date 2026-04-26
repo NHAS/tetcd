@@ -2,6 +2,7 @@ package paths
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -10,7 +11,6 @@ import (
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/tree/kind"
 	"github.com/NHAS/tetcd/watch"
-	"github.com/wI2L/jsondiff"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"
@@ -209,33 +209,36 @@ func (p Path[T]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher
 		}))
 }
 
-func (p Path[T]) Apply(op jsondiff.Operation) ([]clientv3.Op, error) {
+func (p Path[T]) Apply(ctx context.Context, cli *clientv3.Client, path string, change json.RawMessage) ([]clientv3.Op, error) {
 
-	switch op.Type {
-	case jsondiff.OperationAdd, jsondiff.OperationReplace:
-		if op.Value == nil {
-			return nil, fmt.Errorf("no value provided for operation %q: %q", op.Type, p.key)
-		}
-
-		b, err := p.codec.EncodeRaw(op.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to re-encode value for operation %q: %q", op.Type, p.key)
-		}
-
-		if _, err := p.codec.Decode(b); err != nil {
-			return nil, fmt.Errorf("invalid value type for operation %q: %q", op.Type, p.key)
-		}
-
-		return []clientv3.Op{
-			clientv3.OpPut(p.key, string(b)),
-		}, nil
-
-	case jsondiff.OperationRemove:
+	// null merge patch means delete
+	if string(change) == "null" {
 		return []clientv3.Op{
 			clientv3.OpDelete(p.key),
 		}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported operation %q: %q", op.Type, p.key)
 	}
+
+	if change == nil {
+		return nil, fmt.Errorf("nil change provided for key %q", p.key)
+	}
+
+	// Fetch current value to merge onto
+	current, err := p.Get(ctx, cli)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("failed to get current value for key %q: %w", p.key, err)
+	}
+
+	// Validate merged result decodes to T
+	if err := p.codec.DecodeToPointer(change, &current); err != nil {
+		return nil, fmt.Errorf("merged result is invalid type for key %q: %w", p.key, err)
+	}
+
+	merged, err := p.codec.Encode(current)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode merged result for key %q: %w", p.key, err)
+	}
+
+	return []clientv3.Op{
+		clientv3.OpPut(p.key, string(merged)),
+	}, nil
 }

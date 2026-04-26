@@ -32,3 +32,15 @@ func (JSONCodec[T]) Decode(data []byte) (T, error) {
 
 	return val, nil
 }
+
+func (JSONCodec[T]) DecodeToPointer(data []byte, ptr *T) error {
+	dec := json.NewDecoder(bytes.NewBuffer(data))
+	dec.DisallowUnknownFields()
+
+	err := dec.Decode(ptr)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

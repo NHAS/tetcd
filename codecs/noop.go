@@ -18,3 +18,7 @@ func (NoopCodec[T]) Decode(data []byte) (T, error) {
 	var val T
 	return val, nil
 }
+
+func (NoopCodec[T]) DecodeToPointer(data []byte, ptr *T) error {
+	return nil
+}
