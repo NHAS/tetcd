@@ -187,7 +187,7 @@ func TestWatch_DeletedCallbackFires(t *testing.T) {
 	w := p.Watch(context.Background(), etcd)
 	err := w.Start(
 		watch.Deleted(func(_ context.Context, e watch.Event[testType]) error {
-			if !e.HasPrevious() {
+			if e.HasPrevious() {
 				prevValue.Store(e.Previous.Value)
 			}
 			deleted.Store(true)

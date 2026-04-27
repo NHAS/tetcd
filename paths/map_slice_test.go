@@ -2,7 +2,10 @@ package paths_test
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/paths"
@@ -10,7 +13,7 @@ import (
 
 func TestMapSlicePath_Prefix(t *testing.T) {
 	m := paths.NewMapSlicePath("wag/Thing", codecs.NewJsonCodec[string](), false)
-	if got := m.Prefix(); got != "wag/Thing" {
+	if got := m.Prefix(); got != "wag/Thing/" {
 		t.Errorf("Prefix() = %q, want %q", got, "wag/Thing")
 	}
 }
@@ -18,8 +21,8 @@ func TestMapSlicePath_Prefix(t *testing.T) {
 func TestMapSlicePath_Key_ReturnsMapPath(t *testing.T) {
 	m := paths.NewMapSlicePath("wag/Thing", codecs.NewJsonCodec[string](), false)
 	mp := m.Key("bloop")
-	if got := mp.Prefix(); got != "wag/Thing/bloop" {
-		t.Errorf("Key().Prefix() = %q, want %q", got, "wag/Thing/bloop")
+	if got := mp.Prefix(); got != "wag/Thing/bloop/" {
+		t.Errorf("Key().Prefix() = %q, want %q", got, "wag/Thing/bloop/")
 	}
 }
 
@@ -178,5 +181,96 @@ func TestMapSlicePath_Key_NestedList(t *testing.T) {
 	}
 	if result.Values["inner"] != "hello" {
 		t.Errorf("inner List()[inner] = %q, want %q", result.Values["inner"], "hello")
+	}
+}
+
+func TestMapSlicePathApply(t *testing.T) {
+	type mapSliceTestValue struct {
+		Name  string `json:"name,omitempty"`
+		Count int    `json:"count,omitempty"`
+	}
+
+	cli, cleanup := setupEtcdContainer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	codec := codecs.NewJsonCodec[mapSliceTestValue]()
+
+	m := paths.NewMapSlicePath("things", codec, false)
+
+	put := func(key string, value mapSliceTestValue) {
+		t.Helper()
+
+		data, err := codec.Encode(value)
+		if err != nil {
+			t.Fatalf("encode %q: %v", key, err)
+		}
+
+		if _, err := cli.Put(ctx, key, string(data)); err != nil {
+			t.Fatalf("seed %q: %v", key, err)
+		}
+	}
+
+	put("things/group1/item1", mapSliceTestValue{Name: "before", Count: 1})
+	put("things/group1/item3", mapSliceTestValue{Name: "delete-me", Count: 3})
+	put("things/group2/item9", mapSliceTestValue{Name: "remove-a", Count: 9})
+	put("things/group2/item10", mapSliceTestValue{Name: "remove-b", Count: 10})
+
+	patch := json.RawMessage(`{
+        "group1": {
+            "item1": { "count": 2 },
+            "item2": { "name": "new", "count": 7 },
+            "item3": null
+        },
+        "group2": null
+    }`)
+
+	ops, err := m.Apply(ctx, cli, patch)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if len(ops) != 4 {
+		t.Fatalf("Apply() returned %d ops, want 4", len(ops))
+	}
+
+	if _, err := cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+		t.Fatalf("commit ops: %v", err)
+	}
+
+	got, err := m.Key("group1").Key("item1").Get(ctx, cli)
+	if err != nil {
+		t.Fatalf("expected things/group1/item1 to exist: %v", err)
+	}
+
+	want := mapSliceTestValue{Name: "before", Count: 2}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("things/group1/item1 = %+v, want %+v", got, want)
+	}
+
+	got, err = m.Key("group1").Key("item2").Get(ctx, cli)
+	if err != nil {
+		t.Fatalf("expected things/group1/item2 to exist: %v", err)
+	}
+
+	want = mapSliceTestValue{Name: "new", Count: 7}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("things/group1/item2 = %+v, want %+v", got, want)
+	}
+
+	if _, err := m.Key("group1").Key("item3").Get(ctx, cli); err == nil {
+		t.Fatalf("expected things/group1/item3 to be deleted")
+	}
+
+	resp, err := m.Key("group2").Entries(context.Background(), cli)
+	if err != nil {
+		t.Fatalf("get deleted subtree: %v", err)
+	}
+
+	if len(resp) != 0 {
+		t.Fatalf("expected things/group2/ subtree to be deleted, got %d keys", len(resp))
 	}
 }

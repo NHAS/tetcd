@@ -164,6 +164,119 @@ func (m MapSlicePath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch
 }
 
 func (m MapSlicePath[V]) Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error) {
-	// todo write me
-	return nil, nil
+
+	if change == nil {
+		return nil, fmt.Errorf("nil change provided for prefix %q", m.prefix)
+	}
+
+	isNull := func(v json.RawMessage) bool {
+		return strings.TrimSpace(string(v)) == "null"
+	}
+
+	if isNull(change) {
+		return []clientv3.Op{
+			clientv3.OpDelete(m.prefix, clientv3.WithPrefix()),
+		}, nil
+	}
+
+	var outerEntries map[string]json.RawMessage
+	if err := json.Unmarshal(change, &outerEntries); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map slice patch for prefix %q: %w", m.prefix, err)
+	}
+
+	ops := make([]clientv3.Op, 0, len(outerEntries))
+	mergeGetOps := make([]clientv3.Op, 0, len(outerEntries))
+
+	type merge struct {
+		key  string
+		data json.RawMessage
+	}
+
+	mergeData := make([]merge, 0, len(outerEntries))
+
+	for outerKey, outerChange := range outerEntries {
+		if outerChange == nil {
+			return nil, fmt.Errorf("nil change provided for outer key %q under prefix %q", outerKey, m.prefix)
+		}
+
+		outerPrefix := path.Join(m.prefix, outerKey)
+		if !strings.HasSuffix(outerPrefix, "/") {
+			outerPrefix += "/"
+		}
+
+		if isNull(outerChange) {
+			ops = append(ops, clientv3.OpDelete(outerPrefix, clientv3.WithPrefix()))
+			continue
+		}
+
+		var innerEntries map[string]json.RawMessage
+		if err := json.Unmarshal(outerChange, &innerEntries); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal map slice patch for prefix %q outer key %q: %w", m.prefix, outerKey, err)
+		}
+
+		for innerKey, innerChange := range innerEntries {
+			etcdKey := path.Join(m.prefix, outerKey, innerKey)
+
+			if innerChange == nil {
+				return nil, fmt.Errorf("nil change provided for key %q", etcdKey)
+			}
+
+			if isNull(innerChange) {
+				ops = append(ops, clientv3.OpDelete(etcdKey))
+				continue
+			}
+
+			if m.presenceOnly {
+				ops = append(ops, clientv3.OpPut(etcdKey, ""))
+				continue
+			}
+
+			mergeGetOps = append(mergeGetOps, clientv3.OpGet(etcdKey))
+			mergeData = append(mergeData, merge{
+				key:  etcdKey,
+				data: innerChange,
+			})
+		}
+	}
+
+	if len(mergeGetOps) == 0 {
+		return ops, nil
+	}
+
+	resp, err := cli.Txn(ctx).Then(mergeGetOps...).Commit()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get previous values to merge: %w", err)
+	}
+
+	if len(resp.Responses) != len(mergeData) {
+		return nil, fmt.Errorf("failed to get the same number of responses for merges than issued")
+	}
+
+	for i, response := range resp.Responses {
+		rangeResp := response.GetResponseRange()
+		if rangeResp == nil {
+			return nil, fmt.Errorf("failed to get the same number of responses for merges than issued")
+		}
+
+		var value V
+		if len(rangeResp.Kvs) > 0 {
+			kv := rangeResp.Kvs[0]
+			if err := m.codec.DecodeToPointer(kv.Value, &value); err != nil {
+				return nil, fmt.Errorf("invalid initial type for key %q: %w", mergeData[i].key, err)
+			}
+		}
+
+		if err := m.codec.DecodeToPointer(mergeData[i].data, &value); err != nil {
+			return nil, fmt.Errorf("failed to apply merged for key %q: %w", mergeData[i].key, err)
+		}
+
+		merged, err := m.codec.Encode(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode merged value for key %q: %w", mergeData[i].key, err)
+		}
+
+		ops = append(ops, clientv3.OpPut(mergeData[i].key, string(merged)))
+	}
+
+	return ops, nil
 }

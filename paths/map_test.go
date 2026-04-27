@@ -74,8 +74,8 @@ func seedMap[T any](t *testing.T, ctx context.Context, cli *clientv3.Client, m p
 
 func TestMapPath_Prefix(t *testing.T) {
 	m := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[string](), false)
-	if got := m.Prefix(); got != "wag/Acls/Groups" {
-		t.Errorf("Prefix() = %q, want %q", got, "wag/Acls/Groups")
+	if got := m.Prefix(); got != "wag/Acls/Groups/" {
+		t.Errorf("Prefix() = %q, want %q", got, "wag/Acls/Groups/")
 	}
 }
 

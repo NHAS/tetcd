@@ -21,7 +21,7 @@ type treeNode struct {
 }
 
 func (t *treeNode) insert(applier Applier) {
-	key, _ := applier.Details()
+	key, applierType := applier.Details()
 	segments := strings.Split(strings.Trim(key, "/"), "/")
 	cur := t
 	for _, seg := range segments {
@@ -37,8 +37,8 @@ func (t *treeNode) insert(applier Applier) {
 		}
 		cur = next
 	}
-	_, cur.kind = applier.Details()
-	cur.applier = applier
+
+	cur.applier, cur.kind = applier, applierType
 }
 
 func (t *treeNode) find(path string) Applier {
