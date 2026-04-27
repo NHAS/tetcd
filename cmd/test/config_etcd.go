@@ -439,7 +439,7 @@ func (autoTypeConfig) Tags() paths.Path[[]string] {
 
 var (
 	Config = autoTypeConfig{}
-	Differ = tree.NewTree()
+	Differ = tree.NewTree[config.Config]()
 )
 
 // init() builds the tree structure to automatically apply diffs to etcd

@@ -108,7 +108,7 @@ func main() {
 		log.Fatalf("%q is not a named type", TypeName)
 	}
 
-	root, err := buildNode(named.Obj().Name(), named.Underlying(), false)
+	root, err := buildNode(named.Obj().Name(), named, false)
 	if err != nil {
 		log.Fatalf("analysing type: %v", err)
 	}
@@ -263,21 +263,24 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 
 		result = append(result, buildStructs(child, filepath.Join(path, root.name), pathsPkg, codecsPkg)...)
 
-		childTypeName := structTypeName(child.name, filepath.Join(path, root.name))
+		childTypeName := structAutoTypeName(child.name, filepath.Join(path, root.name))
 		structFields = append(structFields, jen.Id(child.name).Id(childTypeName))
 	}
 
-	typeName := structTypeName(root.name, path)
+	autoTypeName := structAutoTypeName(root.name, path)
 
-	result = append(result, jen.Type().Id(typeName).Struct(structFields...))
+	result = append(result, jen.Type().Id(autoTypeName).Struct(structFields...))
 	result = append(result, generateFunctions(root, path, pathsPkg, codecsPkg)...)
 
 	if path == "" {
 		// Root node: emit the var but NOT a Get method
+
+		differType, _ := deriveConcreteTypeName(root, path)
+
 		result = append(result,
 			jen.Var().Defs(
-				jen.Id(root.name).Op("=").Id(typeName).Values(),
-				jen.Id("Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTree").Call(),
+				jen.Id(root.name).Op("=").Id(autoTypeName).Values(),
+				jen.Id("Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTree").Types(differType).Call(),
 			))
 
 		// Collect all register calls for init()
@@ -352,7 +355,7 @@ func generateGetAll(n *node, path string) []jen.Code {
 		return nil
 	}
 
-	autoTypeName := structTypeName(n.name, path)
+	autoTypeName := structAutoTypeName(n.name, path)
 
 	returnType, returnTypeStr := deriveConcreteTypeName(n, path)
 
@@ -452,7 +455,7 @@ func generateWatcher(n *node, path string) []jen.Code {
 		return nil
 	}
 
-	autoTypeName := structTypeName(n.name, path)
+	autoTypeName := structAutoTypeName(n.name, path)
 	returnType, returnTypeStr := deriveConcreteTypeName(n, path)
 
 	prefix := filepath.Join(path, n.name)
@@ -606,7 +609,7 @@ func collectAllLeaves(n *node, path string) []leafWithPath {
 
 const maxOpsPerTxn = 50
 
-func structTypeName(name, path string) string {
+func structAutoTypeName(name, path string) string {
 	prefix := ""
 	if path != "" {
 		prefix = filepath.Base(path)
@@ -637,8 +640,8 @@ func generateFunction(f *node, parent *node, path, pathsPkg, codecsPkg string) [
 	if Prefix != "" {
 		etcdPath = filepath.Join(Prefix, etcdPath)
 	}
-	typeName := structTypeName(parent.name, path)
-	receiver := jen.Id(typeName)
+	autoTypeName := structAutoTypeName(parent.name, path)
+	receiver := jen.Id(autoTypeName)
 
 	switch ut := f.typeDef.Underlying().(type) {
 	case *types.Map:

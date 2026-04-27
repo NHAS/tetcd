@@ -209,7 +209,7 @@ func (p Path[T]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher
 		}))
 }
 
-func (p Path[T]) Apply(ctx context.Context, cli *clientv3.Client, path string, change json.RawMessage) ([]clientv3.Op, error) {
+func (p Path[T]) Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error) {
 
 	// null merge patch means delete
 	if string(change) == "null" {

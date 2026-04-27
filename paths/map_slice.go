@@ -166,6 +166,7 @@ func (m MapSlicePath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch
 		}))
 }
 
-func (m MapSlicePath[V]) Apply(change json.RawMessage) ([]clientv3.Op, error) {
+func (m MapSlicePath[V]) Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error) {
+	// todo write me
 	return nil, nil
 }
