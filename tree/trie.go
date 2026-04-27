@@ -5,8 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"path/filepath"
+	"path"
 	"strings"
 	"sync"
 
@@ -42,12 +41,8 @@ func (t *treeNode) insert(applier Applier) {
 	cur.applier = applier
 }
 
-func (t *treeNode) apply(ctx context.Context, cli *clientv3.Client, fullPath string, newValue json.RawMessage) ([]clientv3.Op, error) {
-	if t.children == nil {
-		return nil, fmt.Errorf("no children in root")
-	}
-
-	segments := strings.Split(strings.Trim(fullPath, "/"), "/")
+func (t *treeNode) find(path string) Applier {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
 
 	eval := func(cur, prev *treeNode) *treeNode {
 		if cur.applier != nil {
@@ -70,12 +65,11 @@ func (t *treeNode) apply(ctx context.Context, cli *clientv3.Client, fullPath str
 	var target *treeNode
 	cur := t
 	for _, seg := range segments {
-
 		target = eval(cur, target)
 
 		next, ok := cur.children[seg]
 		if !ok {
-			return nil, fmt.Errorf("child was not found for %q of path %q", seg, fullPath)
+			return nil
 		}
 
 		cur = next
@@ -83,19 +77,15 @@ func (t *treeNode) apply(ctx context.Context, cli *clientv3.Client, fullPath str
 
 	// evaluate the final node
 	target = eval(cur, target)
-
 	if target == nil {
-		return nil, fmt.Errorf("no target")
+		return nil
 	}
 
-	if target.applier == nil {
-		return nil, fmt.Errorf("no applier found for path %q", fullPath)
-	}
 	if target.kind == kind.KindIntermediate {
-		return nil, fmt.Errorf("applier was of invalid type (Intermediate)")
+		return nil
 	}
 
-	return target.applier.Apply(ctx, cli, newValue)
+	return target.applier
 }
 
 type Tree[T any] struct {
@@ -126,32 +116,92 @@ func (t *Tree[T]) Register(p Applier) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	if p == nil {
+		return
+	}
+
 	t.root.insert(p)
 }
 
 func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, originalJSON, modifiedJSON []byte) error {
-	var etcdOps []clientv3.Op
-	ops, err := extract[T](originalJSON, modifiedJSON)
-	if err != nil {
-		return err
+
+	var validate T
+
+	dec := json.NewDecoder(bytes.NewBuffer(modifiedJSON))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&validate); err != nil {
+		return fmt.Errorf("failed to decode new config: %w", err)
 	}
-	for path, newValue := range ops {
-		result, err := t.root.apply(ctx, cli, path, newValue)
+
+	patchBytes, err := jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
+	if err != nil {
+		return fmt.Errorf("failed to create merge patch: %w", err)
+	}
+
+	// the top level elements that have been changed
+	var patch map[string]json.RawMessage
+	if err := json.Unmarshal(patchBytes, &patch); err != nil {
+		return fmt.Errorf("failed to unmarshal merge patch: %w", err)
+	}
+
+	type actionsFunc func() ([]clientv3.Op, error)
+
+	type item struct {
+		key  string
+		data json.RawMessage
+	}
+
+	queue := make([]item, 0, len(patch))
+	for k, v := range patch {
+		queue = append(queue, item{key: k, data: v})
+	}
+
+	var actions []actionsFunc
+	for len(queue) > 0 {
+
+		current := queue[0]
+		queue = queue[1:]
+
+		fullKey := current.key
+		if t.prefix != "" {
+			fullKey = path.Join(t.prefix, current.key)
+		}
+
+		applier := t.root.find(fullKey)
+		if applier != nil {
+			// if we've found a match, add the applier and skip trying to decode
+			// this means we collect map types but ignore structs
+			actions = append(actions, func() ([]clientv3.Op, error) {
+				return applier.Apply(ctx, cli, current.data)
+			})
+			continue
+		}
+
+		// Try to decode as nested object
+		// map types should be caught by the t.root.find above
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(current.data, &nested); err == nil {
+
+			for k, v := range nested {
+				queue = append(queue, item{key: path.Join(fullKey, k), data: v})
+			}
+
+			continue
+		}
+	}
+
+	var etcdOps []clientv3.Op
+	for _, action := range actions {
+		ops, err := action()
 		if err != nil {
 			return err
 		}
-		etcdOps = append(etcdOps, result...)
+
+		etcdOps = append(etcdOps, ops...)
 	}
 
 	_, err = cli.Txn(ctx).Then(etcdOps...).Commit()
 	return err
-}
-
-func (t *Tree[T]) ApplyWithTxn(ctx context.Context, cli *clientv3.Client, originalJSON, modifiedJSON []byte) error {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	return t.applyWithTxn(ctx, cli, originalJSON, modifiedJSON)
 }
 
 func (t *Tree[T]) Apply(ctx context.Context, cli *clientv3.Client, originalJSON, modifiedJSON []byte) error {
@@ -159,48 +209,4 @@ func (t *Tree[T]) Apply(ctx context.Context, cli *clientv3.Client, originalJSON,
 	defer t.mu.RUnlock()
 
 	return t.applyWithTxn(ctx, cli, originalJSON, modifiedJSON)
-}
-
-func extract[T any](originalJSON, modifiedJSON []byte) (map[string]json.RawMessage, error) {
-
-	var validate T
-
-	dec := json.NewDecoder(bytes.NewBuffer(modifiedJSON))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&validate); err != nil {
-		return nil, fmt.Errorf("failed to decode new config: %w", err)
-	}
-
-	patchBytes, err := jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create merge patch: %w", err)
-	}
-
-	var patch map[string]json.RawMessage
-	if err := json.Unmarshal(patchBytes, &patch); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal merge patch: %w", err)
-	}
-
-	return extractPatchPaths(patch, ""), nil
-}
-
-// this gets every single change down to the path, we should probably make sure it doesnt unwrap some types like maps
-func extractPatchPaths(obj map[string]json.RawMessage, prefix string) map[string]json.RawMessage {
-	paths := make(map[string]json.RawMessage)
-	for k, v := range obj {
-		fullKey := k
-		if prefix != "" {
-			fullKey = filepath.Join(prefix, k)
-		}
-
-		// Try to decode as nested object
-		var nested map[string]json.RawMessage
-		if err := json.Unmarshal(v, &nested); err == nil {
-			maps.Copy(paths, extractPatchPaths(nested, fullKey))
-			continue
-		}
-
-		paths[fullKey] = v
-	}
-	return paths
 }

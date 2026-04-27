@@ -16,7 +16,7 @@ type testType struct {
 }
 
 // TestWatch_KeyStrippedToBase verifies that when Watch() is called on a plain key
-// (e.g. /foo/bar/baz), the event key reported to the callback is filepath.Base of
+// (e.g. /foo/bar/baz), the event key reported to the callback is path.Base of
 // the path key — i.e. "baz" — not the full etcd key.
 func TestWatch_KeyStrippedToBase(t *testing.T) {
 	etcd, cleanup := setupEtcdContainer(t)
@@ -51,13 +51,13 @@ func TestWatch_KeyStrippedToBase(t *testing.T) {
 
 // TestWatch_PrefixTrimAlwaysUsesPathKeyBase documents the current behaviour:
 // the trim function captures p.key at construction time, so ALL events —
-// regardless of the actual etcd key that fired — will report filepath.Base(p.key).
+// regardless of the actual etcd key that fired — will report path.Base(p.key).
 //
 // This test exists to make the behaviour explicit. If the intention is for each
 // event to report its own base name, the trim function in Watch() needs fixing:
 //
-//	func(key string) string { return filepath.Base(key) }   // fix
-//	func(key string) string { return filepath.Base(p.key) } // current (bug?)
+//	func(key string) string { return path.Base(key) }   // fix
+//	func(key string) string { return path.Base(p.key) } // current (bug?)
 func TestWatch_PrefixTrimAlwaysUsesPathKeyBase(t *testing.T) {
 	etcd, cleanup := setupEtcdContainer(t)
 	defer cleanup()
@@ -101,7 +101,7 @@ func TestWatch_PrefixTrimAlwaysUsesPathKeyBase(t *testing.T) {
 		t.Fatal("timed out waiting for event")
 	}
 
-	// Current behaviour: trim func always returns filepath.Base(p.key) == "things"
+	// Current behaviour: trim func always returns path.Base(p.key) == "things"
 	// regardless of actual event key.
 	if got.key != "things" {
 		t.Errorf("expected key %q (current behaviour), got %q", "things", got.key)

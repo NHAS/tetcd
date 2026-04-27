@@ -7,7 +7,7 @@ import (
 	"log"
 	"maps"
 	"os"
-	"path/filepath"
+	"path"
 	"reflect"
 	"sort"
 	"strings"
@@ -16,7 +16,10 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const tetcdPkg = "github.com/NHAS/tetcd"
+const (
+	tetcdPkg  = "github.com/NHAS/tetcd"
+	seperator = "/"
+)
 
 var (
 	FullyQualifiedType string
@@ -50,6 +53,8 @@ func splitType(s string) (pkgPath, typeName string, err error) {
 }
 
 func main() {
+
+	path.Join()
 	flag.StringVar(&Prefix, "prefix", "", "the global etcd key prefix")
 	flag.StringVar(&FullyQualifiedType, "type", "", "fully qualified type to analyse, e.g. github.com/some/pkg.Config (required)")
 	flag.StringVar(&Pkg, "pkg", "", "output package name (defaults to $GOPACKAGE)")
@@ -249,7 +254,7 @@ func sortedKeys(m map[string]*node) []string {
 	return keys
 }
 
-func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
+func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) []jen.Code {
 	var (
 		result       []jen.Code
 		structFields []jen.Code
@@ -261,21 +266,21 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 			continue
 		}
 
-		result = append(result, buildStructs(child, filepath.Join(path, root.name), pathsPkg, codecsPkg)...)
+		result = append(result, buildStructs(child, path.Join(currentPath, root.name), pathsPkg, codecsPkg)...)
 
-		childTypeName := structAutoTypeName(child.name, filepath.Join(path, root.name))
+		childTypeName := structAutoTypeName(child.name, path.Join(currentPath, root.name))
 		structFields = append(structFields, jen.Id(child.name).Id(childTypeName))
 	}
 
-	autoTypeName := structAutoTypeName(root.name, path)
+	autoTypeName := structAutoTypeName(root.name, currentPath)
 
 	result = append(result, jen.Type().Id(autoTypeName).Struct(structFields...))
-	result = append(result, generateFunctions(root, path, pathsPkg, codecsPkg)...)
+	result = append(result, generateFunctions(root, currentPath, pathsPkg, codecsPkg)...)
 
-	if path == "" {
+	if currentPath == "" {
 		// Root node: emit the var but NOT a Get method
 
-		differType, _ := deriveConcreteTypeName(root, path)
+		differType, _ := deriveConcreteTypeName(root, currentPath)
 
 		result = append(result,
 			jen.Var().Defs(
@@ -297,14 +302,14 @@ func buildStructs(root *node, path, pathsPkg, codecsPkg string) []jen.Code {
 		if len(root.children) > 0 {
 			if root.namedType == nil {
 				if _, ok := root.typeDef.(*types.Struct); ok {
-					typeName, _ := deriveConcreteTypeName(root, path)
+					typeName, _ := deriveConcreteTypeName(root, currentPath)
 					result = append(result,
 						jen.Type().Add(typeName).Add(typeExpr(root.typeDef)),
 					)
 				}
 			}
-			result = append(result, generateGetAll(root, path)...)
-			result = append(result, generateWatcher(root, path)...)
+			result = append(result, generateGetAll(root, currentPath)...)
+			result = append(result, generateWatcher(root, currentPath)...)
 		}
 	}
 	return result
@@ -318,9 +323,10 @@ func buildInitBody(root *node, n *node) []jen.Code {
 		// Build: Differ.Register(root.Sub().Sub().Leaf())
 		chain := jen.Id(root.name)
 		rel := strings.TrimPrefix(lp.path, root.name)
-		rel = strings.TrimPrefix(rel, string(filepath.Separator))
+
+		rel = strings.TrimPrefix(rel, string(seperator))
 		if rel != "" {
-			for p := range strings.SplitSeq(rel, string(filepath.Separator)) {
+			for p := range strings.SplitSeq(rel, string(seperator)) {
 				chain = chain.Dot(p)
 			}
 		}
@@ -333,7 +339,7 @@ func buildInitBody(root *node, n *node) []jen.Code {
 	return stmts
 }
 
-func deriveConcreteTypeName(n *node, path string) (jen.Code, string) {
+func deriveConcreteTypeName(n *node, currentPath string) (jen.Code, string) {
 	if n.namedType != nil {
 		typeName := n.namedType.Obj().Name()
 
@@ -341,23 +347,23 @@ func deriveConcreteTypeName(n *node, path string) (jen.Code, string) {
 	}
 	// Anonymous struct: refers to the generated autoConcrete* type
 	prefix := ""
-	if path != "" {
-		prefix = filepath.Base(path)
+	if currentPath != "" {
+		prefix = path.Base(currentPath)
 	}
 
 	constructedTypeName := "result" + prefix + n.name
 	return jen.Id(constructedTypeName), constructedTypeName
 }
 
-func generateGetAll(n *node, path string) []jen.Code {
-	leaves := collectAllLeaves(n, path)
+func generateGetAll(n *node, currentPath string) []jen.Code {
+	leaves := collectAllLeaves(n, currentPath)
 	if len(leaves) == 0 {
 		return nil
 	}
 
-	autoTypeName := structAutoTypeName(n.name, path)
+	autoTypeName := structAutoTypeName(n.name, currentPath)
 
-	returnType, returnTypeStr := deriveConcreteTypeName(n, path)
+	returnType, returnTypeStr := deriveConcreteTypeName(n, currentPath)
 
 	var batches [][]leafWithPath
 	for i := 0; i < len(leaves); i += maxOpsPerTxn {
@@ -372,12 +378,12 @@ func generateGetAll(n *node, path string) []jen.Code {
 	}
 
 	for batchIdx, batch := range batches {
-		batchStmts, handleNames := buildBatchStatementsFromMethods(batchIdx, batch, path, len(batches), n)
+		batchStmts, handleNames := buildBatchStatementsFromMethods(batchIdx, batch, currentPath, len(batches), n)
 		body = append(body, batchStmts...)
 
 		for i, lp := range batch {
 			handleName := handleNames[i]
-			fieldAccess := buildFieldAccess(jen.Empty(), lp, path, n, false)
+			fieldAccess := buildFieldAccess(jen.Empty(), lp, currentPath, n, false)
 
 			valueMethod := "Value"
 			if !lp.leaf.single && !lp.leaf.isCompressed {
@@ -449,18 +455,18 @@ func generateGetAll(n *node, path string) []jen.Code {
 	return []jen.Code{fn, fn2, fn3}
 }
 
-func generateWatcher(n *node, path string) []jen.Code {
-	leaves := collectAllLeaves(n, path)
+func generateWatcher(n *node, currentPath string) []jen.Code {
+	leaves := collectAllLeaves(n, currentPath)
 	if len(leaves) == 0 {
 		return nil
 	}
 
-	autoTypeName := structAutoTypeName(n.name, path)
-	returnType, returnTypeStr := deriveConcreteTypeName(n, path)
+	autoTypeName := structAutoTypeName(n.name, currentPath)
+	returnType, returnTypeStr := deriveConcreteTypeName(n, currentPath)
 
-	prefix := filepath.Join(path, n.name)
+	prefix := path.Join(currentPath, n.name)
 	if Prefix != "" {
-		prefix = filepath.Join(Prefix, prefix)
+		prefix = path.Join(Prefix, prefix)
 	}
 
 	if !strings.HasSuffix(prefix, "/") {
@@ -568,12 +574,12 @@ func buildFieldAccess(codeRoot *jen.Statement, lp leafWithPath, path string, roo
 	// lp.path is the full path including parentNode, e.g. "Config/TLS/NestedInTls"
 	// Strip the root name prefix to get relative segments.
 	rel := strings.TrimPrefix(lp.path, path)
-	rel = strings.TrimPrefix(rel, string(filepath.Separator))
+	rel = strings.TrimPrefix(rel, string(seperator))
 	rel = strings.TrimPrefix(rel, root.name)
-	rel = strings.TrimPrefix(rel, string(filepath.Separator))
+	rel = strings.TrimPrefix(rel, string(seperator))
 
 	if rel != "" {
-		for p := range strings.SplitSeq(rel, string(filepath.Separator)) {
+		for p := range strings.SplitSeq(rel, string(seperator)) {
 			codeRoot = codeRoot.Dot(p)
 		}
 	}
@@ -593,9 +599,9 @@ type leafWithPath struct {
 	path       string // full path from root down to and including parentNode
 }
 
-func collectAllLeaves(n *node, path string) []leafWithPath {
+func collectAllLeaves(n *node, currentPath string) []leafWithPath {
 	var out []leafWithPath
-	currentPath := filepath.Join(path, n.name)
+	currentPath = path.Join(currentPath, n.name)
 	for _, name := range sortedKeys(n.children) {
 		child := n.children[name]
 		if len(child.children) == 0 {
@@ -609,10 +615,10 @@ func collectAllLeaves(n *node, path string) []leafWithPath {
 
 const maxOpsPerTxn = 50
 
-func structAutoTypeName(name, path string) string {
+func structAutoTypeName(name, currentPath string) string {
 	prefix := ""
-	if path != "" {
-		prefix = filepath.Base(path)
+	if currentPath != "" {
+		prefix = path.Base(currentPath)
 	}
 	return "autoType" + prefix + name
 }
@@ -635,12 +641,12 @@ func generateFunctions(n *node, path, pathsPkg, codecsPkg string) (result []jen.
 	return
 }
 
-func generateFunction(f *node, parent *node, path, pathsPkg, codecsPkg string) []jen.Code {
-	etcdPath := filepath.Join(path, parent.name, f.name)
+func generateFunction(f *node, parent *node, currentPath, pathsPkg, codecsPkg string) []jen.Code {
+	etcdPath := path.Join(currentPath, parent.name, f.name)
 	if Prefix != "" {
-		etcdPath = filepath.Join(Prefix, etcdPath)
+		etcdPath = path.Join(Prefix, etcdPath)
 	}
-	autoTypeName := structAutoTypeName(parent.name, path)
+	autoTypeName := structAutoTypeName(parent.name, currentPath)
 	receiver := jen.Id(autoTypeName)
 
 	switch ut := f.typeDef.Underlying().(type) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
@@ -56,7 +56,7 @@ func (m MapSlicePath[V]) PresenceOnly() bool { return m.presenceOnly }
 // Key drops down to an MapPath for a specific entry
 func (m MapSlicePath[V]) Key(k string) MapPath[V] {
 	return MapPath[V]{
-		prefix: filepath.Join(m.prefix, k),
+		prefix: path.Join(m.prefix, k),
 		codec:  m.codec,
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
@@ -205,7 +205,7 @@ func (p Path[T]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher
 		p.key,
 		p.codec,
 		watch.WithPrefixTrimFunc[T](func(key string) string {
-			return filepath.Base(p.key)
+			return path.Base(p.key)
 		}))
 }
 
