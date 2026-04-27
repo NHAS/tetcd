@@ -174,33 +174,6 @@ func TestMapPath_List_Empty(t *testing.T) {
 	}
 }
 
-func TestMapPath_Delete(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
-	defer cleanup()
-	ctx := context.Background()
-
-	m := paths.NewMapPath("wag/Acls/Delete", codecs.NewJsonCodec[string](), false)
-	seedMap(t, ctx, cli, m, map[string]string{
-		"admins":  "alice",
-		"viewers": "carol",
-	})
-
-	if err := m.Delete(ctx, cli, "admins"); err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
-
-	result, err := m.List(ctx, cli)
-	if err != nil {
-		t.Fatalf("List() after Delete() error = %v", err)
-	}
-	if _, exists := result.Values["admins"]; exists {
-		t.Error("Delete() did not remove key 'admins'")
-	}
-	if _, exists := result.Values["viewers"]; !exists {
-		t.Error("Delete() incorrectly removed key 'viewers'")
-	}
-}
-
 func TestMapPath_Put(t *testing.T) {
 	cli, cleanup := setupEtcdContainer(t)
 	defer cleanup()

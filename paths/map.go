@@ -141,19 +141,6 @@ func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clie
 	}, nil
 }
 
-func (m MapPath[V]) Delete(ctx context.Context, cli *clientv3.Client, k string) error {
-	resp, err := cli.Delete(ctx, filepath.Join(m.prefix, k))
-	if err != nil {
-		return err
-	}
-
-	if resp.Deleted == 0 {
-		return ErrNotFound
-	}
-
-	return err
-}
-
 func (m MapPath[V]) DeleteAll(ctx context.Context, cli *clientv3.Client, opts ...clientv3.OpOption) (DeleteResult[V], error) {
 
 	options := []clientv3.OpOption{clientv3.WithPrefix()}
