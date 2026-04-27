@@ -55,10 +55,7 @@ func (m MapSlicePath[V]) PresenceOnly() bool { return m.presenceOnly }
 
 // Key drops down to an MapPath for a specific entry
 func (m MapSlicePath[V]) Key(k string) MapPath[V] {
-	return MapPath[V]{
-		prefix: path.Join(m.prefix, k),
-		codec:  m.codec,
-	}
+	return NewMapPath(path.Join(m.prefix, k), m.codec, m.presenceOnly)
 }
 
 // List reads the entire two-level structure
@@ -75,7 +72,7 @@ func (m MapSlicePath[V]) List(ctx context.Context, cli *clientv3.Client, opts ..
 	result := make(map[string]map[string]V, len(resp.Kvs))
 	order := make([]string, 0, len(resp.Kvs))
 	for _, kv := range resp.Kvs {
-		rel := strings.TrimPrefix(string(kv.Key), m.prefix+"/")
+		rel := strings.TrimPrefix(string(kv.Key), m.prefix)
 		parts := strings.SplitN(rel, "/", 2)
 		if len(parts) != 2 {
 			continue
@@ -162,7 +159,7 @@ func (m MapSlicePath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch
 		m.codec,
 		watch.WithPrefix[V](),
 		watch.WithPrefixTrimFunc[V](func(key string) string {
-			return strings.TrimPrefix(key, m.prefix+"/")
+			return strings.TrimPrefix(key, m.prefix)
 		}))
 }
 

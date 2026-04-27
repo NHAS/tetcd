@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -170,7 +171,9 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 		field := strct.Field(i)
 		tetcdTag := reflect.StructTag(strct.Tag(i)).Get("tetcd")
 
-		if strings.Contains(tetcdTag, "-") {
+		tagParts := strings.Split(tetcdTag, ",")
+
+		if slices.Contains(tagParts, "-") {
 			continue
 		}
 
@@ -178,7 +181,7 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 			continue
 		}
 
-		isCompress := strings.Contains(tetcdTag, "compress")
+		isCompress := slices.Contains(tagParts, "compress")
 		ft := field.Type()
 
 		switch concrete := ft.Underlying().(type) {
@@ -285,7 +288,7 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) []jen.Cod
 		result = append(result,
 			jen.Var().Defs(
 				jen.Id(root.name).Op("=").Id(autoTypeName).Values(),
-				jen.Id("Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTree").Types(differType).Call(),
+				jen.Id("Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(Prefix)),
 			))
 
 		// Collect all register calls for init()

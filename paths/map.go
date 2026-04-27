@@ -51,10 +51,7 @@ func (m MapPath[V]) PresenceOnly() bool {
 }
 
 func (m MapPath[V]) Key(k string) Path[V] {
-	return Path[V]{
-		key:   path.Join(m.prefix, k),
-		codec: m.codec,
-	}
+	return NewPath(path.Join(m.prefix, k), m.codec)
 }
 
 func (m MapPath[V]) Count(ctx context.Context, cli *clientv3.Client) (int64, error) {
@@ -77,7 +74,7 @@ func (m MapPath[V]) Keys(ctx context.Context, cli *clientv3.Client, opts ...clie
 
 	result := make([]string, 0, len(resp.Kvs))
 	for _, r := range resp.Kvs {
-		result = append(result, strings.TrimPrefix(string(r.Key), m.prefix+"/"))
+		result = append(result, strings.TrimPrefix(string(r.Key), m.prefix))
 	}
 
 	return result, nil
@@ -125,7 +122,7 @@ func (m MapPath[V]) List(ctx context.Context, cli *clientv3.Client, opts ...clie
 	keys := make([]string, 0, len(resp.Kvs))
 	for _, kv := range resp.Kvs {
 		// Strip prefix + trailing slash to get the map key
-		k := strings.TrimPrefix(string(kv.Key), m.prefix+"/")
+		k := strings.TrimPrefix(string(kv.Key), m.prefix)
 		v, err := m.codec.Decode(kv.Value)
 		if err != nil {
 			return ListResult[V]{}, fmt.Errorf("decoding %q: %w", string(kv.Key), err)
@@ -183,7 +180,7 @@ func (m MapPath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watc
 		m.codec,
 		watch.WithPrefix[V](),
 		watch.WithPrefixTrimFunc[V](func(key string) string {
-			return strings.TrimPrefix(key, m.prefix+"/")
+			return strings.TrimPrefix(key, m.prefix)
 		}))
 }
 

@@ -69,6 +69,9 @@ func (t *treeNode) find(path string) Applier {
 
 		next, ok := cur.children[seg]
 		if !ok {
+			if target != nil && target.kind == kind.KindMap {
+				break
+			}
 			return nil
 		}
 
@@ -182,12 +185,19 @@ func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, origin
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(current.data, &nested); err == nil {
 
+			// json merge can result in items being nil/null when removed
+			if nested == nil {
+				return fmt.Errorf("path %q was marked as deleted, however no matcher applies", current.key)
+			}
+
 			for k, v := range nested {
-				queue = append(queue, item{key: path.Join(fullKey, k), data: v})
+				queue = append(queue, item{key: path.Join(current.key, k), data: v})
 			}
 
 			continue
 		}
+
+		return fmt.Errorf("key: %q has no matching applier", fullKey)
 	}
 
 	var etcdOps []clientv3.Op
