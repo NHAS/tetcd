@@ -92,21 +92,32 @@ func (t *treeNode) find(path string) Applier {
 }
 
 type Tree[T any] struct {
-	mu     sync.RWMutex
-	root   *treeNode
+	mu   sync.RWMutex
+	root *treeNode
+
+	// the prefix we're storing keys in the db, so we can append them to the patch
 	prefix string
+
+	// versioning folder
+	// prefix + versionFolder / current
+	//                        / next
+	//                        / previous <- last 10 versions for rollback
+	//
+	//                        / lock
+	versionFolder string
 }
 
-func NewTree[T any]() *Tree[T] {
-	return NewTreeWithPrefix[T]("")
+func NewTree[T any](versionKey string) *Tree[T] {
+	return NewTreeWithPrefix[T]("", versionKey)
 }
 
-func NewTreeWithPrefix[T any](prefix string) *Tree[T] {
+func NewTreeWithPrefix[T any](prefix string, versionKey string) *Tree[T] {
 	return &Tree[T]{
 		root: &treeNode{
 			kind: kind.KindIntermediate,
 		},
-		prefix: prefix,
+		prefix:        prefix,
+		versionFolder: path.Join(prefix, versionKey),
 	}
 }
 

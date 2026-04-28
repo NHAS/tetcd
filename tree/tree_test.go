@@ -55,7 +55,7 @@ func TestTree_Plan_ReturnsExpectedChangedKeys(t *testing.T) {
 	members := paths.NewMapSlicePath("wag/Acls/Members", codecs.NewJsonCodec[trieMemberValue](), false)
 	simple := paths.NewPath("Simple", codecs.NewJsonCodec[string]())
 
-	tr := tetree.NewTree[trieTestConfig]()
+	tr := tetree.NewTree[trieTestConfig]("version")
 	tr.Register(groups)
 	tr.Register(members)
 	tr.Register(simple)
@@ -95,7 +95,7 @@ func TestTree_Apply_PassesExpectedMergeSubtreesToMapAppliers(t *testing.T) {
 	membersCapture := &capturingApplier{Applier: members}
 	simpleCapture := &capturingApplier{Applier: simple}
 
-	tr := tetree.NewTree[trieTestConfig]()
+	tr := tetree.NewTree[trieTestConfig]("version")
 	tr.Register(groupsCapture)
 	tr.Register(membersCapture)
 	tr.Register(simpleCapture)
@@ -185,7 +185,7 @@ func TestTree_PlanAndApply_NoChanges_NoOps(t *testing.T) {
 	membersCapture := &capturingApplier{Applier: members}
 	simpleCapture := &capturingApplier{Applier: simple}
 
-	tr := tetree.NewTree[trieTestConfig]()
+	tr := tetree.NewTree[trieTestConfig]("version")
 	tr.Register(groupsCapture)
 	tr.Register(membersCapture)
 	tr.Register(simpleCapture)
@@ -255,7 +255,7 @@ func TestTree_PlanAndApply_EmptyOriginalJSON_AppliesFullConfig(t *testing.T) {
 	membersCapture := &capturingApplier{Applier: members}
 	simpleCapture := &capturingApplier{Applier: simple}
 
-	tr := tetree.NewTree[trieTestConfig]()
+	tr := tetree.NewTree[trieTestConfig]("version")
 	tr.Register(groupsCapture)
 	tr.Register(membersCapture)
 	tr.Register(simpleCapture)
