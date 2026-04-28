@@ -242,3 +242,11 @@ func (p Path[T]) Apply(ctx context.Context, cli *clientv3.Client, change json.Ra
 		clientv3.OpPut(p.key, string(merged)),
 	}, nil
 }
+
+func (p Path[T]) Missing() clientv3.Cmp {
+	return clientv3util.KeyMissing(p.key)
+}
+
+func (p Path[T]) Exists() clientv3.Cmp {
+	return clientv3util.KeyExists(p.key)
+}
