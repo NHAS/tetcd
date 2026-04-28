@@ -26,7 +26,8 @@ func (c *capturingApplier) Apply(ctx context.Context, cli *clientv3.Client, chan
 }
 
 type trieTestConfig struct {
-	Wag trieTestWag `json:"wag"`
+	Wag    trieTestWag `json:"wag"`
+	Simple string
 }
 
 type trieTestWag struct {
@@ -57,15 +58,19 @@ func TestTree_Apply_PassesExpectedMergeSubtreesToMapAppliers(t *testing.T) {
 
 	groups := paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[trieGroupValue](), false)
 	members := paths.NewMapSlicePath("wag/Acls/Members", codecs.NewJsonCodec[trieMemberValue](), false)
+	simple := paths.NewPath("Simple", codecs.NewJsonCodec[string]())
 
 	groupsCapture := &capturingApplier{Applier: groups}
 	membersCapture := &capturingApplier{Applier: members}
+	simpleCapture := &capturingApplier{Applier: simple}
 
 	tr := tetree.NewTree[trieTestConfig]()
 	tr.Register(groupsCapture)
 	tr.Register(membersCapture)
+	tr.Register(simpleCapture)
 
 	original := trieTestConfig{
+		Simple: "yes",
 		Wag: trieTestWag{
 			Acls: trieTestAcls{
 				Groups: map[string]trieGroupValue{
@@ -86,6 +91,7 @@ func TestTree_Apply_PassesExpectedMergeSubtreesToMapAppliers(t *testing.T) {
 	}
 
 	modified := trieTestConfig{
+		Simple: "no",
 		Wag: trieTestWag{
 			Acls: trieTestAcls{
 				Groups: map[string]trieGroupValue{
@@ -105,12 +111,22 @@ func TestTree_Apply_PassesExpectedMergeSubtreesToMapAppliers(t *testing.T) {
 		},
 	}
 
+	err := simple.Put(ctx, cli, original.Simple)
+	if err != nil {
+		t.Fatal(err)
+	}
 	seedMap(t, ctx, cli, groups, original.Wag.Acls.Groups)
 	seedMapSlice(t, ctx, cli, members, original.Wag.Acls.Members)
 
 	if err := tr.Apply(ctx, cli, mustMarshalJSON(t, original), mustMarshalJSON(t, modified)); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
+
+	if len(simpleCapture.changes) != 1 {
+		t.Fatalf("simple applier saw %d changes, want 1", len(simpleCapture.changes))
+	}
+
+	assertJSONEqual(t, simpleCapture.changes[0], `"no"`)
 
 	if len(groupsCapture.changes) != 1 {
 		t.Fatalf("groups applier saw %d changes, want 1", len(groupsCapture.changes))
