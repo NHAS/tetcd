@@ -2,65 +2,18 @@ package paths_test
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/paths"
+	"github.com/NHAS/tetcd/testhelpers"
 	"github.com/NHAS/tetcd/watch"
 
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
-
-func setupEtcdContainer(t *testing.T) (*clientv3.Client, func()) {
-	t.Helper()
-	ctx := context.Background()
-
-	req := testcontainers.ContainerRequest{
-		Image:        "quay.io/coreos/etcd:v3.6.7",
-		ExposedPorts: []string{"2379/tcp"},
-		Env: map[string]string{
-			"ETCD_LISTEN_CLIENT_URLS":    "http://0.0.0.0:2379",
-			"ETCD_ADVERTISE_CLIENT_URLS": "http://0.0.0.0:2379",
-		},
-		WaitingFor: wait.ForLog("ready to serve client requests").
-			WithStartupTimeout(10 * time.Second),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start etcd container: %v", err)
-	}
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get container host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "2379")
-	if err != nil {
-		t.Fatalf("failed to get mapped port: %v", err)
-	}
-
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{fmt.Sprintf("http://%s:%s", host, port.Port())},
-		DialTimeout: 5 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("failed to create etcd client: %v", err)
-	}
-
-	return client, func() {
-		client.Close()
-		container.Terminate(ctx)
-	}
-}
 
 func seedMap[T any](t *testing.T, ctx context.Context, cli *clientv3.Client, m paths.MapPath[T], data map[string]T) {
 	t.Helper()
@@ -87,7 +40,7 @@ func TestMapPath_Key(t *testing.T) {
 }
 
 func TestMapPath_Keys(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -117,7 +70,7 @@ func TestMapPath_Keys(t *testing.T) {
 }
 
 func TestMapPath_Keys_Empty(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -133,7 +86,7 @@ func TestMapPath_Keys_Empty(t *testing.T) {
 }
 
 func TestMapPath_List(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -159,7 +112,7 @@ func TestMapPath_List(t *testing.T) {
 }
 
 func TestMapPath_List_Empty(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -175,7 +128,7 @@ func TestMapPath_List_Empty(t *testing.T) {
 }
 
 func TestMapPath_Put(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -211,7 +164,7 @@ func TestMapPath_Put(t *testing.T) {
 }
 
 func TestMapPath_DeleteAll(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -240,7 +193,7 @@ func TestMapPath_DeleteAll(t *testing.T) {
 }
 
 func TestMapPath_DeleteAll_Empty(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -256,7 +209,7 @@ func TestMapPath_DeleteAll_Empty(t *testing.T) {
 }
 
 func TestMapPath_Watch_Put(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -305,7 +258,7 @@ func TestMapPath_Watch_Put(t *testing.T) {
 }
 
 func TestMapPath_Watch_Put_Object(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -371,7 +324,7 @@ func TestMapPath_Watch_Put_Object(t *testing.T) {
 	}
 }
 func TestMapPath_Watch_Delete(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -425,7 +378,7 @@ func TestMapPath_Watch_Delete(t *testing.T) {
 }
 
 func TestMapPath_Watch_ContextCancel(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -446,7 +399,7 @@ func TestMapPath_Watch_ContextCancel(t *testing.T) {
 }
 
 func TestMapPath_Watch_DoesNotReceiveOtherPrefixes(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := t.Context()
 
@@ -490,6 +443,87 @@ func TestMapPath_Watch_DoesNotReceiveOtherPrefixes(t *testing.T) {
 		if ev.Key != "correct" {
 			t.Errorf("Watch received unexpected key %q, want %q", ev.Key, "correct")
 		}
+	}
+}
+
+func TestMapPath_Apply(t *testing.T) {
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	type TestValue struct {
+		Name  string `json:"name,omitempty"`
+		Level int    `json:"level,omitempty"`
+	}
+
+	m := paths.NewMapPath("wag/Acls/Apply", codecs.NewJsonCodec[TestValue](), false)
+
+	seedMap(t, ctx, cli, m, map[string]TestValue{
+		"admins":  {Name: "alice", Level: 1},
+		"viewers": {Name: "carol", Level: 2},
+	})
+
+	ops, err := m.Apply(ctx, cli, json.RawMessage(`{
+        "admins": {"level": 3},
+        "guests": {"name": "dave", "level": 4},
+        "viewers": null
+    }`))
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if len(ops) != 3 {
+		t.Fatalf("Apply() returned %d ops, want 3", len(ops))
+	}
+
+	if _, err := cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+		t.Fatalf("committing Apply() ops: %v", err)
+	}
+
+	result, err := m.List(ctx, cli)
+	if err != nil {
+		t.Fatalf("List() after Apply() error = %v", err)
+	}
+
+	want := map[string]TestValue{
+		"admins": {Name: "alice", Level: 3},
+		"guests": {Name: "dave", Level: 4},
+	}
+
+	if len(result.Values) != len(want) {
+		t.Fatalf("List() returned %d entries, want %d", len(result.Values), len(want))
+	}
+
+	for k, v := range want {
+		if result.Values[k] != v {
+			t.Errorf("List()[%q] = %+v, want %+v", k, result.Values[k], v)
+		}
+	}
+
+	if _, ok := result.Values["viewers"]; ok {
+		t.Errorf("List() still contains deleted key %q", "viewers")
+	}
+
+	ops, err = m.Apply(ctx, cli, json.RawMessage("null"))
+	if err != nil {
+		t.Fatalf("Apply(null) error = %v", err)
+	}
+
+	if len(ops) != 1 {
+		t.Fatalf("Apply(null) returned %d ops, want 1", len(ops))
+	}
+
+	if _, err := cli.Txn(ctx).Then(ops...).Commit(); err != nil {
+		t.Fatalf("committing Apply(null) ops: %v", err)
+	}
+
+	result, err = m.List(ctx, cli)
+	if err != nil {
+		t.Fatalf("List() after Apply(null) error = %v", err)
+	}
+
+	if len(result.Values) != 0 {
+		t.Fatalf("List() after Apply(null) = %v, want empty", result.Values)
 	}
 }
 

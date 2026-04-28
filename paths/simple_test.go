@@ -8,6 +8,7 @@ import (
 
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/paths"
+	"github.com/NHAS/tetcd/testhelpers"
 	"github.com/NHAS/tetcd/watch"
 )
 
@@ -19,7 +20,7 @@ type testType struct {
 // (e.g. /foo/bar/baz), the event key reported to the callback is path.Base of
 // the path key — i.e. "baz" — not the full etcd key.
 func TestWatch_KeyStrippedToBase(t *testing.T) {
-	etcd, cleanup := setupEtcdContainer(t)
+	etcd, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	p := paths.NewPath("/foo/bar/baz", codecs.NewJsonCodec[testType]())
@@ -59,7 +60,7 @@ func TestWatch_KeyStrippedToBase(t *testing.T) {
 //	func(key string) string { return path.Base(key) }   // fix
 //	func(key string) string { return path.Base(p.key) } // current (bug?)
 func TestWatch_PrefixTrimAlwaysUsesPathKeyBase(t *testing.T) {
-	etcd, cleanup := setupEtcdContainer(t)
+	etcd, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	// Use a prefix path so multiple child keys can fire events.
@@ -111,7 +112,7 @@ func TestWatch_PrefixTrimAlwaysUsesPathKeyBase(t *testing.T) {
 // TestWatch_CreatedCallbackFires is a basic sanity-check that the watcher
 // integrated through Path.Watch() fires a Created event.
 func TestWatch_CreatedCallbackFires(t *testing.T) {
-	etcd, cleanup := setupEtcdContainer(t)
+	etcd, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	p := paths.NewPath("/watch-created-test", codecs.NewJsonCodec[testType]())
@@ -139,7 +140,7 @@ func TestWatch_CreatedCallbackFires(t *testing.T) {
 
 // TestWatch_ModifiedCallbackFires verifies Modified fires (not Created) on a second Put.
 func TestWatch_ModifiedCallbackFires(t *testing.T) {
-	etcd, cleanup := setupEtcdContainer(t)
+	etcd, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	p := paths.NewPath("/watch-modified-test", codecs.NewJsonCodec[testType]())
@@ -172,7 +173,7 @@ func TestWatch_ModifiedCallbackFires(t *testing.T) {
 
 // TestWatch_DeletedCallbackFires verifies Deleted fires after a key is removed.
 func TestWatch_DeletedCallbackFires(t *testing.T) {
-	etcd, cleanup := setupEtcdContainer(t)
+	etcd, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	p := paths.NewPath("/watch-deleted-test", codecs.NewJsonCodec[testType]())
@@ -212,7 +213,7 @@ func TestWatch_DeletedCallbackFires(t *testing.T) {
 
 // TestWatch_CloseCancelsEvents verifies that after Close(), no further callbacks fire.
 func TestWatch_CloseCancelsEvents(t *testing.T) {
-	etcd, cleanup := setupEtcdContainer(t)
+	etcd, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	p := paths.NewPath("/watch-close-test", codecs.NewJsonCodec[testType]())

@@ -5,15 +5,13 @@ import (
 	"fmt"
 	"slices"
 	"testing"
-	"time"
 
 	clientv3util "go.etcd.io/etcd/client/v3/clientv3util"
 
 	"github.com/NHAS/tetcd/paths"
+	"github.com/NHAS/tetcd/testhelpers"
 
 	"github.com/NHAS/tetcd/codecs"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -30,61 +28,11 @@ func (autoTypeTestPaths) MapPrefix(prefix string) paths.MapPath[string] {
 var TestPaths = autoTypeTestPaths{}
 
 // ---------------------------------------------------------------------------
-// Test infrastructure
-// ---------------------------------------------------------------------------
-
-func setupEtcdContainer(t *testing.T) (*clientv3.Client, func()) {
-	t.Helper()
-	ctx := context.Background()
-
-	req := testcontainers.ContainerRequest{
-		Image:        "quay.io/coreos/etcd:v3.6.7",
-		ExposedPorts: []string{"2379/tcp"},
-		Env: map[string]string{
-			"ETCD_LISTEN_CLIENT_URLS":    "http://0.0.0.0:2379",
-			"ETCD_ADVERTISE_CLIENT_URLS": "http://0.0.0.0:2379",
-		},
-		WaitingFor: wait.ForLog("ready to serve client requests").
-			WithStartupTimeout(10 * time.Second),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start etcd container: %v", err)
-	}
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get container host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "2379")
-	if err != nil {
-		t.Fatalf("failed to get mapped port: %v", err)
-	}
-
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{fmt.Sprintf("http://%s:%s", host, port.Port())},
-		DialTimeout: 5 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("failed to create etcd client: %v", err)
-	}
-
-	return client, func() {
-		client.Close()
-		container.Terminate(ctx)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // PutTx / GetTx – unconditional
 // ---------------------------------------------------------------------------
 
 func TestTxn_UnconditionalPutAndGet(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -118,7 +66,7 @@ func TestTxn_UnconditionalPutAndGet(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_UnconditionalDelete(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -148,7 +96,7 @@ func TestTxn_UnconditionalDelete(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ConditionalThenBranch(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -190,7 +138,7 @@ func TestTxn_ConditionalThenBranch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ConditionalElseBranch(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -228,7 +176,7 @@ func TestTxn_ConditionalElseBranch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_GetHandle_NotFound(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -253,7 +201,7 @@ func TestTxn_GetHandle_NotFound(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ListTx_Entries(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -291,7 +239,7 @@ func TestTxn_ListTx_Entries(t *testing.T) {
 }
 
 func TestTxn_ListTx_KeysOnly(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -320,7 +268,7 @@ func TestTxn_ListTx_KeysOnly(t *testing.T) {
 }
 
 func TestTxn_ListTx_EmptyPrefix(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -347,7 +295,7 @@ func TestTxn_ListTx_EmptyPrefix(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_SubTx_InnerThenBranch(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -392,7 +340,7 @@ func TestTxn_SubTx_InnerThenBranch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_MultipleOpsInThen(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -429,7 +377,7 @@ func TestTxn_MultipleOpsInThen(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ConditionalThen_MixedOps(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -498,7 +446,7 @@ func TestTxn_ConditionalThen_MixedOps(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ConditionalGet_OnlyTakenBranchResolves(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -545,7 +493,7 @@ func TestTxn_ConditionalGet_OnlyTakenBranchResolves(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_PutOverwrite(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -583,7 +531,7 @@ func TestTxn_PutOverwrite(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_SubTx_OuterElse_InnerElseBranch(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -630,7 +578,7 @@ func TestTxn_SubTx_OuterElse_InnerElseBranch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ListTx_AfterPutTx(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -679,7 +627,7 @@ func TestTxn_ListTx_AfterPutTx(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ListTx_KeysStrippedOfPrefix(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -719,7 +667,7 @@ func TestTxn_ListTx_KeysStrippedOfPrefix(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_ConditionalMultipleConditions(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -767,7 +715,7 @@ func TestTxn_ConditionalMultipleConditions(t *testing.T) {
 
 // one of the two conditions fails → else fires
 func TestTxn_ConditionalMultipleConditions_OneFails(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -814,7 +762,7 @@ func TestTxn_ConditionalMultipleConditions_OneFails(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_GetHandle_KeyReturnsPath(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -861,7 +809,7 @@ func TestTxn_DeepNesting_AllFourPaths(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			client, cleanup := setupEtcdContainer(t)
+			client, cleanup := testhelpers.SetupEtcdContainer(t)
 			defer cleanup()
 
 			ctx := context.Background()
@@ -932,7 +880,7 @@ func TestTxn_DeepNesting_AllFourPaths(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_DeleteHandle_DeletedCount(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -958,7 +906,7 @@ func TestTxn_DeleteHandle_DeletedCount(t *testing.T) {
 }
 
 func TestTxn_DeleteHandle_DeletedCount_KeyMissing(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -984,7 +932,7 @@ func TestTxn_DeleteHandle_DeletedCount_KeyMissing(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1030,7 +978,7 @@ func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
 }
 
 func TestTxn_DeleteHandle_PrevValue_NotFound_WhenNoPrevKVOption(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1057,7 +1005,7 @@ func TestTxn_DeleteHandle_PrevValue_NotFound_WhenNoPrevKVOption(t *testing.T) {
 }
 
 func TestTxn_DeleteHandle_PrevValue_KeyMissing(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1088,7 +1036,7 @@ func TestTxn_DeleteHandle_PrevValue_KeyMissing(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_DeleteHandle_ErrNotDone(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1111,7 +1059,7 @@ func TestTxn_DeleteHandle_ErrNotDone(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_DeleteHandle_KeyReturnsPath(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1131,7 +1079,7 @@ func TestTxn_DeleteHandle_KeyReturnsPath(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTxn_DeleteHandle_InConditionalThenBranch(t *testing.T) {
-	client, cleanup := setupEtcdContainer(t)
+	client, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 
 	ctx := context.Background()

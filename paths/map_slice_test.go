@@ -9,6 +9,7 @@ import (
 
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/paths"
+	"github.com/NHAS/tetcd/testhelpers"
 )
 
 func TestMapSlicePath_Prefix(t *testing.T) {
@@ -27,7 +28,7 @@ func TestMapSlicePath_Key_ReturnsMapPath(t *testing.T) {
 }
 
 func TestMapSlicePath_List_Empty(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -43,7 +44,7 @@ func TestMapSlicePath_List_Empty(t *testing.T) {
 }
 
 func TestMapSlicePath_List(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -85,7 +86,7 @@ func TestMapSlicePath_List(t *testing.T) {
 }
 
 func TestMapSlicePath_List_SkipsInvalidDepth(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -114,7 +115,7 @@ func TestMapSlicePath_List_SkipsInvalidDepth(t *testing.T) {
 }
 
 func TestMapSlicePath_DeleteAll(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -150,7 +151,7 @@ func TestMapSlicePath_DeleteAll(t *testing.T) {
 }
 
 func TestMapSlicePath_DeleteAll_Empty(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -164,7 +165,7 @@ func TestMapSlicePath_DeleteAll_Empty(t *testing.T) {
 }
 
 func TestMapSlicePath_Key_NestedList(t *testing.T) {
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -190,7 +191,7 @@ func TestMapSlicePathApply(t *testing.T) {
 		Count int    `json:"count,omitempty"`
 	}
 
-	cli, cleanup := setupEtcdContainer(t)
+	cli, cleanup := testhelpers.SetupEtcdContainer(t)
 	defer cleanup()
 	ctx := context.Background()
 
