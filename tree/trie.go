@@ -126,41 +126,93 @@ func (t *Tree[T]) Register(p Applier) {
 	t.root.insert(p)
 }
 
-func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, originalJSON, modifiedJSON []byte) error {
+func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, plan Plan) error {
+
+	var etcdOps []clientv3.Op
+	for _, op := range plan.ops {
+		ops, err := op.action(ctx, cli)
+		if err != nil {
+			return err
+		}
+
+		etcdOps = append(etcdOps, ops...)
+	}
+
+	_, err := cli.Txn(ctx).Then(etcdOps...).Commit()
+	return err
+}
+
+func (t *Tree[T]) Apply(ctx context.Context, cli *clientv3.Client, plan Plan) error {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return t.applyWithTxn(ctx, cli, plan)
+}
+
+type opsFunc func(ctx context.Context, cli *clientv3.Client) ([]clientv3.Op, error)
+
+type Plan struct {
+	ops []Op
+}
+
+func (p *Plan) KeysChanged() []string {
+	result := []string{}
+
+	for _, op := range p.ops {
+		result = append(result, op.key)
+	}
+	return result
+}
+
+type Op struct {
+	action opsFunc
+
+	ChangeItem
+}
+
+type ChangeItem struct {
+	key    string
+	change json.RawMessage
+}
+
+func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (Plan, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	if len(bytes.TrimSpace(originalJSON)) == 0 {
+		originalJSON = []byte("{}")
+	}
 
 	var validate T
 
 	dec := json.NewDecoder(bytes.NewBuffer(modifiedJSON))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&validate); err != nil {
-		return fmt.Errorf("failed to decode new config: %w", err)
+		return Plan{}, fmt.Errorf("failed to decode new config: %w", err)
 	}
 
 	patchBytes, err := jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
 	if err != nil {
-		return fmt.Errorf("failed to create merge patch: %w", err)
+		return Plan{}, fmt.Errorf("failed to create merge patch: %w", err)
 	}
 
 	// the top level elements that have been changed
 	var patch map[string]json.RawMessage
 	if err := json.Unmarshal(patchBytes, &patch); err != nil {
-		return fmt.Errorf("failed to unmarshal merge patch: %w", err)
+		return Plan{}, fmt.Errorf("failed to unmarshal merge patch: %w", err)
 	}
 
-	type actionsFunc func() ([]clientv3.Op, error)
-
-	type item struct {
-		key  string
-		data json.RawMessage
-	}
-
-	queue := make([]item, 0, len(patch))
+	queue := make([]ChangeItem, 0, len(patch))
 	for k, v := range patch {
-		queue = append(queue, item{key: k, data: v})
+		queue = append(queue, ChangeItem{key: k, change: v})
 	}
 
-	var actions []actionsFunc
+	var plan Plan
 	for len(queue) > 0 {
+
+		if err := ctx.Err(); err != nil {
+			return Plan{}, fmt.Errorf("cancelled by context: %w", err)
+		}
 
 		current := queue[0]
 		queue = queue[1:]
@@ -174,8 +226,14 @@ func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, origin
 		if applier != nil {
 			// if we've found a match, add the applier and skip trying to decode
 			// this means we collect map types but ignore structs
-			actions = append(actions, func() ([]clientv3.Op, error) {
-				return applier.Apply(ctx, cli, current.data)
+			plan.ops = append(plan.ops, Op{
+				action: func(ctx context.Context, cli *clientv3.Client) ([]clientv3.Op, error) {
+					return applier.Apply(ctx, cli, current.change)
+				},
+				ChangeItem: ChangeItem{
+					key:    fullKey,
+					change: current.change,
+				},
 			})
 			continue
 		}
@@ -183,40 +241,28 @@ func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, origin
 		// Try to decode as nested object
 		// map types should be caught by the t.root.find above
 		var nested map[string]json.RawMessage
-		if err := json.Unmarshal(current.data, &nested); err == nil {
+		if err := json.Unmarshal(current.change, &nested); err == nil {
 
 			// json merge can result in items being nil/null when removed
 			if nested == nil {
-				return fmt.Errorf("path %q was marked as deleted, however no matcher applies", current.key)
+				return Plan{}, fmt.Errorf("path %q was marked as deleted, however no matcher applies", current.key)
 			}
 
+			// if we're a nested item, and not matching a map then continue adding items to the queue
 			for k, v := range nested {
-				queue = append(queue, item{key: path.Join(current.key, k), data: v})
+				queue = append(queue,
+					ChangeItem{
+						key:    path.Join(current.key, k),
+						change: v,
+					},
+				)
 			}
 
 			continue
 		}
 
-		return fmt.Errorf("key: %q has no matching applier", fullKey)
+		return Plan{}, fmt.Errorf("key: %q has no matching applier", fullKey)
 	}
 
-	var etcdOps []clientv3.Op
-	for _, action := range actions {
-		ops, err := action()
-		if err != nil {
-			return err
-		}
-
-		etcdOps = append(etcdOps, ops...)
-	}
-
-	_, err = cli.Txn(ctx).Then(etcdOps...).Commit()
-	return err
-}
-
-func (t *Tree[T]) Apply(ctx context.Context, cli *clientv3.Client, originalJSON, modifiedJSON []byte) error {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	return t.applyWithTxn(ctx, cli, originalJSON, modifiedJSON)
+	return plan, nil
 }
