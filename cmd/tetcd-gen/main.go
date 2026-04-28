@@ -288,7 +288,7 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) []jen.Cod
 		result = append(result,
 			jen.Var().Defs(
 				jen.Id(root.name).Op("=").Id(autoTypeName).Values(),
-				jen.Id("Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(Prefix)),
+				jen.Id(root.name+"Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(Prefix)),
 			))
 
 		// Collect all register calls for init()
@@ -336,7 +336,7 @@ func buildInitBody(root *node, n *node) []jen.Code {
 		chain = chain.Dot(lp.leaf.name).Call()
 
 		stmts = append(stmts,
-			jen.Id("Differ").Dot("Register").Call(chain),
+			jen.Id(n.name+"Differ").Dot("Register").Call(chain),
 		)
 	}
 	return stmts
