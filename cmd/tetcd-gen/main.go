@@ -391,6 +391,7 @@ func generateGetAll(n *node, currentPath string) []jen.Code {
 			valueMethod := "Value"
 			if !lp.leaf.single && !lp.leaf.isCompressed {
 				valueMethod = "Entries"
+
 				if ut, ok := lp.leaf.typeDef.Underlying().(*types.Map); ok {
 					if sl, ok := ut.Elem().Underlying().(*types.Slice); ok {
 						if isKind(sl.Elem().Underlying(), types.String) {
@@ -400,8 +401,10 @@ func generateGetAll(n *node, currentPath string) []jen.Code {
 				}
 
 				if ut, ok := lp.leaf.typeDef.Underlying().(*types.Slice); ok {
-					if _, ok := ut.Elem().Underlying().(*types.Basic); ok {
+					if t, ok := ut.Elem().Underlying().(*types.Basic); ok && t.Kind() != types.Uint8 {
 						valueMethod = "Keys"
+					} else {
+						valueMethod = "Value"
 					}
 				}
 			}
@@ -523,16 +526,30 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 		txFunc := "GetTx"
 		if !lp.leaf.single && !lp.leaf.isCompressed {
 			txFunc = "ListTx"
+
 			switch ut := lp.leaf.typeDef.Underlying().(type) {
 			case *types.Map:
 				switch ut.Elem().Underlying().(type) {
 
 				case *types.Slice, *types.Array, *types.Map:
 					txFunc = "DynamicCollectionTx"
-				default:
 				}
-			default:
-
+			case *types.Slice:
+				basic, ok := ut.Elem().Underlying().(*types.Basic)
+				if ok {
+					switch basic.Kind() {
+					case types.Uint8:
+						txFunc = "GetTx"
+					}
+				}
+			case *types.Array:
+				basic, ok := ut.Elem().Underlying().(*types.Basic)
+				if ok {
+					switch basic.Kind() {
+					case types.Uint8:
+						txFunc = "GetTx"
+					}
+				}
 			}
 
 		}
@@ -665,13 +682,17 @@ func generateFunction(f *node, parent *node, currentPath, pathsPkg, codecsPkg st
 		}
 
 	case *types.Slice:
-		if f.isCompressed {
+		basic, ok := ut.Elem().Underlying().(*types.Basic)
+
+		if f.isCompressed || (ok && basic.Kind() == types.Uint8) {
 			return generatePathFunction(receiver, f, etcdPath, pathsPkg, codecsPkg)
 		}
 		return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg, true)
 
 	case *types.Array:
-		if f.isCompressed {
+		basic, ok := ut.Elem().Underlying().(*types.Basic)
+
+		if f.isCompressed || (ok && basic.Kind() == types.Uint8) {
 			return generatePathFunction(receiver, f, etcdPath, pathsPkg, codecsPkg)
 		}
 		return generateMapFunction(receiver, f, etcdPath, ut.Elem(), pathsPkg, codecsPkg, true)

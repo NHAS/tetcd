@@ -337,6 +337,16 @@ func (autoTypeConfigTLS) KeyFile() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/TLS/KeyFile", codecs.NewJsonCodec[string]())
 }
 
+// SomeBytes() KV should contain type []byte
+func (autoTypeConfigTLS) SomeBytes() paths.Path[[]byte] {
+	return paths.NewPath("wagtest/Config/TLS/SomeBytes", codecs.NewJsonCodec[[]byte]())
+}
+
+// SomeStrings() is a map path with prefix wagtest/Config/TLS/SomeStrings, value type string
+func (autoTypeConfigTLS) SomeStrings() paths.MapPath[string] {
+	return paths.NewMapPath("wagtest/Config/TLS/SomeStrings", codecs.NewJsonCodec[string](), true)
+}
+
 // Get fetches all fields of TLSConfig in one or more transactions pinned to the same etcd revision.
 func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.TLSConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
@@ -348,6 +358,8 @@ func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, fail
 	h0_5 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Fronk())
 	h0_6 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Number())
 	h0_7 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Something())
+	h0_8 := tetcd.GetTx(txn0.Then(), a.SomeBytes())
+	h0_9 := tetcd.ListTx(txn0.Then(), a.SomeStrings())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -380,6 +392,14 @@ func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, fail
 		return result, err
 	}
 	result.NestedInTls.Something, err = h0_7.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	result.SomeBytes, err = h0_8.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	result.SomeStrings, err = h0_9.Keys()
 	if err != nil && failEarly {
 		return result, err
 	}
@@ -467,5 +487,7 @@ func init() {
 	Differ.Register(Config.TLS.NestedInTls.Fronk())
 	Differ.Register(Config.TLS.NestedInTls.Number())
 	Differ.Register(Config.TLS.NestedInTls.Something())
+	Differ.Register(Config.TLS.SomeBytes())
+	Differ.Register(Config.TLS.SomeStrings())
 	Differ.Register(Config.Tags())
 }

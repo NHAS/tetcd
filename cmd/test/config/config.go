@@ -40,6 +40,10 @@ type TLSConfig struct {
 
 	Ahh another.SomeType
 
+	SomeBytes []byte
+
+	SomeStrings []string
+
 	Groups map[string][]string
 }
 
