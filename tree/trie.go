@@ -101,7 +101,7 @@ type Tree[T any] struct {
 	// versioning folder
 	// prefix + versionFolder / current
 	//                        / next
-	//                        / previous <- last 10 versions for rollback
+	//                        / previous <- last 10 config versions for rollback
 	//
 	//                        / lock
 	versionFolder string
@@ -166,6 +166,10 @@ type Plan struct {
 	ops []Op
 }
 
+func (p *Plan) Changed() bool {
+	return len(p.ops) > 0
+}
+
 func (p *Plan) KeysChanged() []string {
 	result := []string{}
 
@@ -196,7 +200,7 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 
 	var validate T
 
-	dec := json.NewDecoder(bytes.NewBuffer(modifiedJSON))
+	dec := json.NewDecoder(bytes.NewReader(modifiedJSON))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&validate); err != nil {
 		return Plan{}, fmt.Errorf("failed to decode new config: %w", err)

@@ -22,7 +22,7 @@ func (JSONCodec[T]) EncodeRaw(val any) ([]byte, error) {
 func (JSONCodec[T]) Decode(data []byte) (T, error) {
 	var val T
 
-	dec := json.NewDecoder(bytes.NewBuffer(data))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
 	err := dec.Decode(&val)
@@ -34,7 +34,7 @@ func (JSONCodec[T]) Decode(data []byte) (T, error) {
 }
 
 func (JSONCodec[T]) DecodeToPointer(data []byte, ptr *T) error {
-	dec := json.NewDecoder(bytes.NewBuffer(data))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
 	err := dec.Decode(ptr)
