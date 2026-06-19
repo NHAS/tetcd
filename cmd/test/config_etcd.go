@@ -321,16 +321,8 @@ func (a autoTypeTLSNestedInTls) Watch(ctx context.Context, cli *v3.Client) *watc
 type autoTypeTLSYar struct{}
 
 // Created() KV should contain type struct{wall uint64; ext int64; loc *time.Location}
-func (autoTypeTLSYar) Created() paths.Path[struct {
-	wall uint64
-	ext  int64
-	loc  *time.Location
-}] {
-	return paths.NewPath("wagtest/Config/TLS/Yar/Created", codecs.NewJsonCodec[struct {
-		wall uint64
-		ext  int64
-		loc  *time.Location
-	}]())
+func (autoTypeTLSYar) Created() paths.Path[time.Time] {
+	return paths.NewPath("wagtest/Config/TLS/Yar/Created", codecs.NewJsonCodec[time.Time]())
 }
 
 // Document() KV should contain type []byte
@@ -482,8 +474,14 @@ type autoTypeConfig struct {
 }
 
 // CompressMe() KV should contain type struct{Noot string; Toaster string}
-func (autoTypeConfig) CompressMe() paths.Path[config.CompressedStruct] {
-	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[config.CompressedStruct]())
+func (autoTypeConfig) CompressMe() paths.Path[struct {
+	Noot    string
+	Toaster string
+}] {
+	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[struct {
+		Noot    string
+		Toaster string
+	}]())
 }
 
 // EnumMap() is a map path with prefix wagtest/Config/EnumMap, value type github.com/NHAS/tetcd/cmd/test/config.Enum
