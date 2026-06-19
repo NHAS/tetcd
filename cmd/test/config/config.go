@@ -1,6 +1,10 @@
 package config
 
-import "github.com/NHAS/tetcd/cmd/test/another"
+import (
+	"time"
+
+	"github.com/NHAS/tetcd/cmd/test/another"
+)
 
 type somethingElse struct {
 	Test    string
@@ -24,6 +28,11 @@ type CompressedStruct struct {
 	Toaster string
 }
 
+type Configuration struct {
+	Document []byte
+	Created  time.Time
+}
+
 type TLSConfig struct {
 	CertFile string
 	KeyFile  string
@@ -45,6 +54,8 @@ type TLSConfig struct {
 	SomeStrings []string
 
 	Groups map[string][]string
+
+	Yar Configuration
 }
 
 type InnerMap struct {

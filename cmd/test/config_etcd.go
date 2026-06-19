@@ -12,6 +12,7 @@ import (
 	watch "github.com/NHAS/tetcd/watch"
 	specialist "github.com/NHAS/tetcd/watch/specialist"
 	v3 "go.etcd.io/etcd/client/v3"
+	"time"
 )
 
 type autoTypeConfigDummy struct{}
@@ -317,9 +318,57 @@ func (a autoTypeTLSNestedInTls) Watch(ctx context.Context, cli *v3.Client) *watc
 	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/NestedInTls/", a.GetWithFail)
 }
 
+type autoTypeTLSYar struct{}
+
+// Created() KV should contain type struct{wall uint64; ext int64; loc *time.Location}
+func (autoTypeTLSYar) Created() paths.Path[struct {
+	wall uint64
+	ext  int64
+	loc  *time.Location
+}] {
+	return paths.NewPath("wagtest/Config/TLS/Yar/Created", codecs.NewJsonCodec[struct {
+		wall uint64
+		ext  int64
+		loc  *time.Location
+	}]())
+}
+
+// Document() KV should contain type []byte
+func (autoTypeTLSYar) Document() paths.Path[[]byte] {
+	return paths.NewPath("wagtest/Config/TLS/Yar/Document", codecs.NewJsonCodec[[]byte]())
+}
+
+// Get fetches all fields of Configuration in one or more transactions pinned to the same etcd revision.
+func (a autoTypeTLSYar) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.Configuration, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
+	h0_0 := tetcd.GetTx(txn0.Then(), a.Created())
+	h0_1 := tetcd.GetTx(txn0.Then(), a.Document())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.Created, err = h0_0.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	result.Document, err = h0_1.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	return result, nil
+}
+func (a autoTypeTLSYar) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.Configuration, err error) {
+	return a.GetWithFail(ctx, cli, false, opts...)
+}
+
+// Watch returns a Watcher that emits the full Configuration struct whenever any sub-key changes.
+func (a autoTypeTLSYar) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[config.Configuration] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/Yar/", a.GetWithFail)
+}
+
 type autoTypeConfigTLS struct {
 	Ahh         autoTypeTLSAhh
 	NestedInTls autoTypeTLSNestedInTls
+	Yar         autoTypeTLSYar
 }
 
 // CertFile() KV should contain type string
@@ -360,6 +409,8 @@ func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, fail
 	h0_7 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Something())
 	h0_8 := tetcd.GetTx(txn0.Then(), a.SomeBytes())
 	h0_9 := tetcd.ListTx(txn0.Then(), a.SomeStrings())
+	h0_10 := tetcd.GetTx(txn0.Then(), a.Yar.Created())
+	h0_11 := tetcd.GetTx(txn0.Then(), a.Yar.Document())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -400,6 +451,14 @@ func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, fail
 		return result, err
 	}
 	result.SomeStrings, err = h0_9.Keys()
+	if err != nil && failEarly {
+		return result, err
+	}
+	result.Yar.Created, err = h0_10.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	result.Yar.Document, err = h0_11.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
@@ -489,5 +548,7 @@ func init() {
 	ConfigDiffer.Register(Config.TLS.NestedInTls.Something())
 	ConfigDiffer.Register(Config.TLS.SomeBytes())
 	ConfigDiffer.Register(Config.TLS.SomeStrings())
+	ConfigDiffer.Register(Config.TLS.Yar.Created())
+	ConfigDiffer.Register(Config.TLS.Yar.Document())
 	ConfigDiffer.Register(Config.Tags())
 }
