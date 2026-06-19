@@ -705,19 +705,11 @@ func generateFunction(f *node, parent *node, currentPath, pathsPkg, codecsPkg st
 	}
 }
 
-func shouldPreserveNamedStruct(n *node) bool {
-	if n == nil || n.isCompressed || n.namedType == nil {
-		return false
-	}
-
-	strct, ok := n.typeDef.(*types.Struct)
-	if !ok {
-		return false
-	}
+func noExportedFields(strct *types.Struct) bool {
 
 	// Preserve only if the struct has no exported fields.
-	for field := range strct.Fields() {
-		if field.Exported() {
+	for i := 0; i < strct.NumFields(); i++ {
+		if strct.Field(i).Exported() {
 			return false
 		}
 	}
@@ -728,7 +720,7 @@ func shouldPreserveNamedStruct(n *node) bool {
 func generatePathFunction(receiver *jen.Statement, f *node, etcdPath, pathsPkg, codecsPkg string) []jen.Code {
 
 	code := typeExpr(f.typeDef)
-	if shouldPreserveNamedStruct(f) {
+	if s, ok := f.typeDef.(*types.Struct); ok && f.namedType != nil && (f.isCompressed || noExportedFields(s)) {
 		code = typeExpr(f.namedType)
 	}
 
