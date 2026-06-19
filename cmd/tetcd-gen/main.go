@@ -710,20 +710,14 @@ func shouldPreserveNamedStruct(n *node) bool {
 		return false
 	}
 
-	// Only preserve external named structs.
-	pkg := n.namedType.Obj().Pkg()
-	if pkg == nil || pkg.Path() == PkgPath {
-		return false
-	}
-
 	strct, ok := n.typeDef.(*types.Struct)
 	if !ok {
 		return false
 	}
 
 	// Preserve only if the struct has no exported fields.
-	for i := 0; i < strct.NumFields(); i++ {
-		if strct.Field(i).Exported() {
+	for field := range strct.Fields() {
+		if field.Exported() {
 			return false
 		}
 	}
