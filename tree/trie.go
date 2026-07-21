@@ -31,7 +31,7 @@ func (t *treeNode) insert(applier Applier) {
 		next, ok := cur.children[seg]
 		if !ok {
 			next = &treeNode{
-				kind: kind.KindIntermediate,
+				kind: kind.Intermediate,
 			}
 			cur.children[seg] = next
 		}
@@ -49,12 +49,10 @@ func (t *treeNode) find(path string) Applier {
 
 			_, pathType := cur.applier.Details()
 			switch pathType {
-			case kind.KindSimple:
+			case kind.Simple, kind.Map, kind.Ignored:
 				return cur
-			case kind.KindMap:
-				return cur
-			case kind.KindIntermediate:
-				if prev != nil && prev.kind == kind.KindSimple {
+			case kind.Intermediate:
+				if prev != nil && prev.kind == kind.Simple {
 					return nil
 				}
 			}
@@ -69,7 +67,7 @@ func (t *treeNode) find(path string) Applier {
 
 		next, ok := cur.children[seg]
 		if !ok {
-			if target != nil && target.kind == kind.KindMap {
+			if target != nil && target.kind == kind.Map {
 				break
 			}
 			return nil
@@ -84,7 +82,7 @@ func (t *treeNode) find(path string) Applier {
 		return nil
 	}
 
-	if target.kind == kind.KindIntermediate {
+	if target.kind == kind.Intermediate {
 		return nil
 	}
 
@@ -114,7 +112,7 @@ func NewTree[T any](versionKey string) *Tree[T] {
 func NewTreeWithPrefix[T any](prefix string, versionKey string) *Tree[T] {
 	return &Tree[T]{
 		root: &treeNode{
-			kind: kind.KindIntermediate,
+			kind: kind.Intermediate,
 		},
 		prefix:        prefix,
 		versionFolder: path.Join(prefix, versionKey),
@@ -135,6 +133,13 @@ func (t *Tree[T]) Register(p Applier) {
 	}
 
 	t.root.insert(p)
+}
+
+func (t *Tree[T]) Ignore(path string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.root.insert(newIgnoredPath(path))
 }
 
 func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, plan Plan) error {
@@ -238,6 +243,10 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 		}
 
 		applier := t.root.find(fullKey)
+		if _, applierKind := applier.Details(); applierKind == kind.Ignored {
+			continue
+		}
+
 		if applier != nil {
 			// if we've found a match, add the applier and skip trying to decode
 			// this means we collect map types but ignore structs

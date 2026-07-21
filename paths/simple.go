@@ -35,7 +35,7 @@ func (p Path[T]) Codec() codecs.Codec[T] {
 }
 
 func (p Path[T]) Details() (string, kind.Kind) {
-	return p.key, kind.KindSimple
+	return p.key, kind.Simple
 }
 
 func (p Path[T]) Key() string {

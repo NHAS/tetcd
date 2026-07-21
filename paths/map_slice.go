@@ -48,7 +48,7 @@ func (m MapSlicePath[V]) Prefix() string {
 }
 
 func (m MapSlicePath[T]) Details() (string, kind.Kind) {
-	return m.prefix, kind.KindMap
+	return m.prefix, kind.Map
 }
 
 func (m MapSlicePath[V]) PresenceOnly() bool { return m.presenceOnly }

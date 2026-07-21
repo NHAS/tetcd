@@ -43,7 +43,7 @@ func (m MapPath[V]) Prefix() string {
 }
 
 func (p MapPath[T]) Details() (string, kind.Kind) {
-	return p.prefix, kind.KindMap
+	return p.prefix, kind.Map
 }
 
 func (m MapPath[V]) PresenceOnly() bool {
