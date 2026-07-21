@@ -272,12 +272,16 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) ([]jen.Co
 		ignoredPaths []string
 	)
 	for ignored := range root.ignored {
-		ignoredPaths = append(ignoredPaths, filepath.Join(currentPath, ignored))
+		ignoredPaths = append(ignoredPaths, filepath.Join(currentPath, root.name, ignored))
 	}
 
 	// generates the auto type fields
 	for _, name := range sortedKeys(root.children) {
 		child := root.children[name]
+		for ignored := range child.ignored {
+			ignoredPaths = append(ignoredPaths, filepath.Join(currentPath, root.name, child.name, ignored))
+		}
+
 		if len(child.children) == 0 {
 			continue
 		}
@@ -760,8 +764,6 @@ func generatePathFunction(receiver *jen.Statement, f *node, etcdPath, pathsPkg, 
 }
 
 func generateMapFunction(receiver *jen.Statement, f *node, etcdPath string, valueType types.Type, pathsPkg, codecsPkg string, presenceOnly bool) []jen.Code {
-
-	log.Println("valueType:", valueType)
 
 	return []jen.Code{
 		jen.Commentf("%s() is a map path with prefix %s, value type %s", f.name, etcdPath, valueType.String()),
