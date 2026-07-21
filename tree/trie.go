@@ -244,11 +244,11 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 		fullKey = path.Join(t.topLevelStruct, current.key)
 
 		applier := t.root.find(fullKey)
-		if _, applierKind := applier.Details(); applierKind == kind.Ignored {
-			continue
-		}
-
 		if applier != nil {
+			if _, applierKind := applier.Details(); applierKind == kind.Ignored {
+				continue
+			}
+
 			// if we've found a match, add the applier and skip trying to decode
 			// this means we collect map types but ignore structs
 			plan.ops = append(plan.ops, Op{
