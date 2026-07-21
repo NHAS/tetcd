@@ -236,12 +236,11 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 		current := queue[0]
 		queue = queue[1:]
 
-		fullKey := current.key
+		var fullKey string
 		if t.prefix != "" {
-			fullKey = path.Join(t.prefix)
+			fullKey = t.prefix
 		}
-
-		fullKey = path.Join(t.topLevelStruct, current.key)
+		fullKey = path.Join(fullKey, t.topLevelStruct, current.key)
 
 		applier := t.root.find(fullKey)
 		if applier != nil {
