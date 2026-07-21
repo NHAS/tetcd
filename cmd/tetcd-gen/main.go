@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
@@ -291,7 +292,7 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) []jen.Cod
 		result = append(result,
 			jen.Var().Defs(
 				jen.Id(root.name).Op("=").Id(autoTypeName).Values(),
-				jen.Id(root.name+"Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(Prefix), jen.Lit(DifferVersionKey)),
+				jen.Id(root.name+"Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(filepath.Join(root.name, Prefix)), jen.Lit(DifferVersionKey)),
 			))
 
 		// Collect all register calls for init()
@@ -708,8 +709,8 @@ func generateFunction(f *node, parent *node, currentPath, pathsPkg, codecsPkg st
 func noExportedFields(strct *types.Struct) bool {
 
 	// Preserve only if the struct has no exported fields.
-	for i := 0; i < strct.NumFields(); i++ {
-		if strct.Field(i).Exported() {
+	for field := range strct.Fields() {
+		if field.Exported() {
 			return false
 		}
 	}

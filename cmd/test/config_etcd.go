@@ -474,14 +474,8 @@ type autoTypeConfig struct {
 }
 
 // CompressMe() KV should contain type struct{Noot string; Toaster string}
-func (autoTypeConfig) CompressMe() paths.Path[struct {
-	Noot    string
-	Toaster string
-}] {
-	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[struct {
-		Noot    string
-		Toaster string
-	}]())
+func (autoTypeConfig) CompressMe() paths.Path[config.CompressedStruct] {
+	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[config.CompressedStruct]())
 }
 
 // EnumMap() is a map path with prefix wagtest/Config/EnumMap, value type github.com/NHAS/tetcd/cmd/test/config.Enum
