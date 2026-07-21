@@ -32,8 +32,6 @@ var (
 	Filename string
 
 	Prefix string
-
-	DifferVersionKey string
 )
 
 type node struct {
@@ -64,7 +62,6 @@ func main() {
 	flag.StringVar(&FullyQualifiedType, "type", "", "fully qualified type to analyse, e.g. github.com/some/pkg.Config (required)")
 	flag.StringVar(&Pkg, "pkg", "", "output package name (defaults to $GOPACKAGE)")
 	flag.StringVar(&Filename, "out", "", "output file (default: <type>_gen.go in current dir)")
-	flag.StringVar(&DifferVersionKey, "differ_version_key", "version", "The key the differ uses to store versions")
 	flag.Parse()
 
 	if FullyQualifiedType == "" {
@@ -308,7 +305,7 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) ([]jen.Co
 		result = append(result,
 			jen.Var().Defs(
 				jen.Id(root.name).Op("=").Id(autoTypeName).Values(),
-				jen.Id(root.name+"Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(filepath.Join(Prefix, root.name)), jen.Lit(DifferVersionKey)),
+				jen.Id(root.name+"Differ").Op("=").Qual("github.com/NHAS/tetcd/tree", "").Id("NewTreeWithPrefix").Types(differType).Call(jen.Lit(Prefix), jen.Lit(root.name)),
 			))
 
 		// Collect all register calls for init()
