@@ -135,11 +135,13 @@ func (t *Tree[T]) Register(p Applier) {
 	t.root.insert(p)
 }
 
-func (t *Tree[T]) Ignore(path string) {
+func (t *Tree[T]) Ignore(paths ...string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.root.insert(newIgnoredPath(path))
+	for _, path := range paths {
+		t.root.insert(newIgnoredPath(path))
+	}
 }
 
 func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, plan Plan) error {

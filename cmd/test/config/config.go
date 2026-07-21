@@ -9,6 +9,8 @@ import (
 type somethingElse struct {
 	Test    string
 	Toaster string
+
+	IgnoredSubThirdField string `tetcd:"-"`
 }
 
 type ServerConfig struct {
@@ -16,6 +18,8 @@ type ServerConfig struct {
 
 	Host string
 	Port int
+
+	IgnoredSubSecField string `tetcd:"-"`
 }
 
 type NestedExternal struct {
@@ -31,6 +35,8 @@ type CompressedStruct struct {
 type Configuration struct {
 	Document []byte
 	Created  time.Time
+
+	IgnoredSubThirdNoEmbedField string `tetcd:"-"`
 }
 
 type TLSConfig struct {
