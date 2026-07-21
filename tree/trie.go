@@ -137,7 +137,7 @@ func (t *Tree[T]) Ignore(paths ...string) {
 	defer t.mu.Unlock()
 
 	for _, path := range paths {
-		t.root.insert(newIgnoredPath(filepath.Join(t.topLevelStruct, path)))
+		t.root.insert(newIgnoredPath(filepath.Join(t.prefix, path)))
 	}
 }
 
