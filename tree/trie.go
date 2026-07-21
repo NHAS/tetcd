@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -96,26 +97,22 @@ type Tree[T any] struct {
 	// the prefix we're storing keys in the db, so we can append them to the patch
 	prefix string
 
-	// versioning folder
-	// prefix + versionFolder / current
-	//                        / next
-	//                        / previous <- last 10 config versions for rollback
-	//
-	//                        / lock
-	versionFolder string
+	// the top level struct name, which is present in the generated code
+	// but not within json diffs
+	topLevelStruct string
 }
 
-func NewTree[T any](versionKey string) *Tree[T] {
-	return NewTreeWithPrefix[T]("", versionKey)
+func NewTree[T any](topLevelStruct string) *Tree[T] {
+	return NewTreeWithPrefix[T]("", topLevelStruct)
 }
 
-func NewTreeWithPrefix[T any](prefix string, versionKey string) *Tree[T] {
+func NewTreeWithPrefix[T any](prefix, topLevelStruct string) *Tree[T] {
 	return &Tree[T]{
 		root: &treeNode{
 			kind: kind.Intermediate,
 		},
-		prefix:        prefix,
-		versionFolder: path.Join(prefix, versionKey),
+		prefix:         prefix,
+		topLevelStruct: topLevelStruct,
 	}
 }
 
@@ -140,7 +137,7 @@ func (t *Tree[T]) Ignore(paths ...string) {
 	defer t.mu.Unlock()
 
 	for _, path := range paths {
-		t.root.insert(newIgnoredPath(path))
+		t.root.insert(newIgnoredPath(filepath.Join(t.topLevelStruct, path)))
 	}
 }
 
@@ -241,8 +238,10 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 
 		fullKey := current.key
 		if t.prefix != "" {
-			fullKey = path.Join(t.prefix, current.key)
+			fullKey = path.Join(t.prefix)
 		}
+
+		fullKey = path.Join(t.topLevelStruct, current.key)
 
 		applier := t.root.find(fullKey)
 		if _, applierKind := applier.Details(); applierKind == kind.Ignored {
