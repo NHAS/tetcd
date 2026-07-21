@@ -269,7 +269,7 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 
 			// json merge can result in items being nil/null when removed
 			if nested == nil {
-				return Plan{}, fmt.Errorf("path %q was marked as deleted, however no matcher applies", current.key)
+				return Plan{}, fmt.Errorf("path %q was marked as deleted, however no matcher applies", fullKey)
 			}
 
 			// if we're a nested item, and not matching a map then continue adding items to the queue
