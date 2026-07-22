@@ -16,6 +16,7 @@ var (
 	ErrNotDone  = errors.New("operation not done")
 )
 
+// Ignore empty responses
 func IgnoreEmpty[T any](t T, err error) (T, error) {
 	if errors.Is(err, paths.ErrNotFound) {
 		return t, nil
