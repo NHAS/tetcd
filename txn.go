@@ -561,7 +561,7 @@ func (h *ListHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 func (h *ListHandle[T]) fail(err error) { h.err = err }
 
 // Entries returns the decoded key→value map for a non-keys-only scan.
-// Returns paths.ErrNotFound when no keys were present under the prefix.
+// Returns empty map when no keys were present under the prefix.
 func (h *ListHandle[T]) Entries() (map[string]T, error) {
 	if h.err != nil {
 		return nil, h.err
@@ -575,19 +575,19 @@ func (h *ListHandle[T]) Entries() (map[string]T, error) {
 	}
 
 	if h.items == nil {
-		return nil, paths.ErrNotFound
+		return make(map[string]T), nil
 	}
 	return h.items, nil
 }
 
 // Keys returns the list of sub-keys
-// Returns paths.ErrNotFound when no keys were present under the prefix.
+// Returns empty string array when no keys were present under the prefix.
 func (h *ListHandle[T]) Keys() ([]string, error) {
 	if h.err != nil {
 		return nil, h.err
 	}
 	if h.keys == nil {
-		return nil, paths.ErrNotFound
+		return []string{}, nil
 	}
 	return h.keys, nil
 }
@@ -751,7 +751,7 @@ func (h *DynamicHandle[T]) Entries() (map[string]map[string]T, error) {
 	}
 
 	if h.items == nil {
-		return nil, paths.ErrNotFound
+		return make(map[string]map[string]T), nil
 	}
 	return h.items, nil
 }
@@ -761,7 +761,7 @@ func (h *DynamicHandle[T]) Keys() (map[string][]string, error) {
 		return nil, h.err
 	}
 	if h.items == nil {
-		return nil, paths.ErrNotFound
+		return make(map[string][]string), nil
 	}
 	if !h.presenceOnly {
 		return nil, fmt.Errorf("Keys() called on a non-presence-only ListSliceHandle, use Entries()")
