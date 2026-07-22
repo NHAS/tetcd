@@ -2,7 +2,6 @@ package tetcd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -762,13 +761,3 @@ func (h *DynamicHandle[T]) Keys() (map[string][]string, error) {
 	}
 	return result, nil
 }
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
-var (
-	ErrNoHandle = errors.New("no handle for operation")
-	ErrKeysOnly = errors.New("Keys only operation")
-	ErrNotDone  = errors.New("operation not done")
-)
