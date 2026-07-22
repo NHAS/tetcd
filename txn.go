@@ -56,7 +56,6 @@ const (
 
 type handle interface {
 	parse(*etcdserverpb.ResponseOp) error
-	fail(err error)
 }
 
 type TxnOp func(*Txn)
@@ -405,11 +404,6 @@ func (t *SubTxn) resolve(resp *clientv3.TxnResponse) error {
 				return fmt.Errorf("get response at index %d has no handle (key: %s)", i, key)
 			}
 
-			if len(get.Kvs) == 0 {
-				handles[i].fail(paths.ErrNotFound)
-				continue
-			}
-
 			if err := handles[i].parse(c); err != nil {
 				return err
 			}
@@ -489,8 +483,6 @@ func (h *GetHandle[T]) Key() string {
 	return h.key
 }
 
-func (h *GetHandle[T]) fail(err error) { h.err = err }
-
 // Value returns the decoded value, or an error (including paths.ErrNotFound).
 func (h *GetHandle[T]) Value() (value T, err error) {
 	if !h.wrote {
@@ -557,8 +549,6 @@ func (h *ListHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 
 	return nil
 }
-
-func (h *ListHandle[T]) fail(err error) { h.err = err }
 
 // Entries returns the decoded key→value map for a non-keys-only scan.
 // Returns paths.ErrNotFound when no keys were present under the prefix.
@@ -643,8 +633,6 @@ func (h *DeleteHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 
 	return nil
 }
-
-func (h *DeleteHandle[T]) fail(err error) { h.err = err }
 
 func (h *DeleteHandle[T]) Key() string { return h.key }
 
@@ -737,8 +725,6 @@ func (h *DynamicHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 
 	return nil
 }
-
-func (h *DynamicHandle[T]) fail(err error) { h.err = err }
 
 // Entries returns the decoded two-level map after Commit().
 func (h *DynamicHandle[T]) Entries() (map[string]map[string]T, error) {
