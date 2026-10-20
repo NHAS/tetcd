@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	tetcd "github.com/NHAS/tetcd"
+	another "github.com/NHAS/tetcd/cmd/test/another"
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
 	paths "github.com/NHAS/tetcd/paths"
@@ -150,6 +151,35 @@ func (a autoTypeConfigSomethingElse) Watch(ctx context.Context, cli *v3.Client) 
 	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/SomethingElse/", a.GetWithFail)
 }
 
+type autoTypeTLSAhh struct{}
+
+// Method() KV should contain type string
+func (autoTypeTLSAhh) Method() paths.Path[string] {
+	return paths.NewPath("wagtest/Config/TLS/Ahh/Method", codecs.NewJsonCodec[string]())
+}
+
+// Get fetches all fields of SomeType in one or more transactions pinned to the same etcd revision.
+func (a autoTypeTLSAhh) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
+	txn0 := tetcd.NewTxn(ctx, cli, opts...)
+	h0_0 := txn0.Then().Get(a.Method())
+	if err := txn0.Commit(); err != nil {
+		return result, err
+	}
+	result.Method, err = h0_0.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	return result, nil
+}
+func (a autoTypeTLSAhh) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
+	return a.GetWithFail(ctx, cli, false, opts...)
+}
+
+// Watch returns a Watcher that emits the full SomeType struct whenever any sub-key changes.
+func (a autoTypeTLSAhh) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[another.SomeType] {
+	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/Ahh/", a.GetWithFail)
+}
+
 type autoTypeNestedInTlsDoublyNested struct{}
 
 // Arghh() KV should contain type string
@@ -288,6 +318,7 @@ func (a autoTypeTLSYar) Watch(ctx context.Context, cli *v3.Client) *watch.Watche
 }
 
 type autoTypeConfigTLS struct {
+	Ahh         autoTypeTLSAhh
 	NestedInTls autoTypeTLSNestedInTls
 	Yar         autoTypeTLSYar
 }
@@ -320,61 +351,66 @@ func (autoTypeConfigTLS) SomeStrings() paths.MapPath[string] {
 // Get fetches all fields of TLSConfig in one or more transactions pinned to the same etcd revision.
 func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.TLSConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := txn0.Then().Get(a.CertFile())
-	h0_1 := txn0.Then().DynamicCollection(a.Groups())
-	h0_2 := txn0.Then().Get(a.KeyFile())
-	h0_3 := txn0.Then().Get(a.NestedInTls.DoublyNested.Arghh())
-	h0_4 := txn0.Then().Get(a.NestedInTls.Fronk())
-	h0_5 := txn0.Then().Get(a.NestedInTls.Number())
-	h0_6 := txn0.Then().Get(a.NestedInTls.Something())
-	h0_7 := txn0.Then().Get(a.SomeBytes())
-	h0_8 := txn0.Then().List(a.SomeStrings())
-	h0_9 := txn0.Then().Get(a.Yar.Created())
-	h0_10 := txn0.Then().Get(a.Yar.Document())
+	h0_0 := txn0.Then().Get(a.Ahh.Method())
+	h0_1 := txn0.Then().Get(a.CertFile())
+	h0_2 := txn0.Then().DynamicCollection(a.Groups())
+	h0_3 := txn0.Then().Get(a.KeyFile())
+	h0_4 := txn0.Then().Get(a.NestedInTls.DoublyNested.Arghh())
+	h0_5 := txn0.Then().Get(a.NestedInTls.Fronk())
+	h0_6 := txn0.Then().Get(a.NestedInTls.Number())
+	h0_7 := txn0.Then().Get(a.NestedInTls.Something())
+	h0_8 := txn0.Then().Get(a.SomeBytes())
+	h0_9 := txn0.Then().List(a.SomeStrings())
+	h0_10 := txn0.Then().Get(a.Yar.Created())
+	h0_11 := txn0.Then().Get(a.Yar.Document())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
-	result.CertFile, err = h0_0.Value()
+	result.Ahh.Method, err = h0_0.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.Groups, err = h0_1.Keys()
+	result.CertFile, err = h0_1.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.KeyFile, err = h0_2.Value()
+	result.Groups, err = h0_2.Keys()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.DoublyNested.Arghh, err = h0_3.Value()
+	result.KeyFile, err = h0_3.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.Fronk, err = h0_4.Value()
+	result.NestedInTls.DoublyNested.Arghh, err = h0_4.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.Number, err = h0_5.Value()
+	result.NestedInTls.Fronk, err = h0_5.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.Something, err = h0_6.Value()
+	result.NestedInTls.Number, err = h0_6.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.SomeBytes, err = h0_7.Value()
+	result.NestedInTls.Something, err = h0_7.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.SomeStrings, err = h0_8.Keys()
+	result.SomeBytes, err = h0_8.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.Yar.Created, err = h0_9.Value()
+	result.SomeStrings, err = h0_9.Keys()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.Yar.Document, err = h0_10.Value()
+	result.Yar.Created, err = h0_10.Value()
+	if err != nil && failEarly {
+		return result, err
+	}
+	result.Yar.Document, err = h0_11.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
@@ -451,6 +487,7 @@ func init() {
 	ConfigDiffer.Register(Config.Server.Toaster())
 	ConfigDiffer.Register(Config.SomethingElse.Extra())
 	ConfigDiffer.Register(Config.SomethingElse.Methods())
+	ConfigDiffer.Register(Config.TLS.Ahh.Method())
 	ConfigDiffer.Register(Config.TLS.CertFile())
 	ConfigDiffer.Register(Config.TLS.Groups())
 	ConfigDiffer.Register(Config.TLS.KeyFile())

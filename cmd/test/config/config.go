@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/NHAS/tetcd/cmd/test/another"
+)
 
 type somethingElse struct {
 	Test    string
@@ -18,9 +22,9 @@ type ServerConfig struct {
 	IgnoredSubSecField string `tetcd:"-"`
 }
 
-// type NestedExternal struct {
-// 	another.SomeType
-// }
+type NestedExternal struct {
+	another.SomeType
+}
 
 type CompressedStruct struct {
 	Noot string
@@ -49,7 +53,7 @@ type TLSConfig struct {
 		}
 	}
 
-	//Ahh another.SomeType
+	Ahh another.SomeType
 
 	SomeBytes []byte
 
