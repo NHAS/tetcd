@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"go/types"
+	"io"
 	"log"
 	"maps"
 	"os"
@@ -130,7 +131,13 @@ func main() {
 		f.Null()
 	}
 
-	if err := f.Save(Filename); err != nil {
+	file, err := os.Create(Filename)
+	if err != nil {
+		log.Fatalf("unable to open file for writing: %q", Filename)
+	}
+	defer file.Close()
+
+	if err := f.Render(io.MultiWriter(file, os.Stdout)); err != nil {
 		log.Fatalf("saving %s: %v", Filename, err)
 	}
 
@@ -584,13 +591,13 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 		if batchIdx > 0 {
 			extraOpts := jen.Qual("go.etcd.io/etcd/client/v3", "WithRev").Call(jen.Id("rev"))
 			getTxCall = jen.Id(handleVar).Op(":=").
-				Call(
-					accessorChain,
-					extraOpts,
-				)
+				Id(txnVar).Dot("Then").Call().Dot(txFunc).Call(
+				accessorChain,
+				extraOpts,
+			)
 		} else {
-			getTxCall = jen.Id(handleVar).Op(":=").Qual(tetcdPkg, txFunc).Call(
-				jen.Id(txnVar).Dot("Then").Call(),
+			getTxCall = jen.Id(handleVar).Op(":=").
+				Id(txnVar).Dot("Then").Call().Dot(txFunc).Call(
 				accessorChain,
 			)
 		}

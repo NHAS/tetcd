@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	tetcd "github.com/NHAS/tetcd"
-	another "github.com/NHAS/tetcd/cmd/test/another"
 	config "github.com/NHAS/tetcd/cmd/test/config"
 	codecs "github.com/NHAS/tetcd/codecs"
 	paths "github.com/NHAS/tetcd/paths"
@@ -29,7 +28,7 @@ type resultConfigDummy struct {
 // Get fetches all fields of resultConfigDummy in one or more transactions pinned to the same etcd revision.
 func (a autoTypeConfigDummy) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultConfigDummy, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Something5())
+	h0_0 := txn0.Then().Get(a.Something5())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -46,35 +45,6 @@ func (a autoTypeConfigDummy) Get(ctx context.Context, cli *v3.Client, opts ...te
 // Watch returns a Watcher that emits the full resultConfigDummy struct whenever any sub-key changes.
 func (a autoTypeConfigDummy) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[resultConfigDummy] {
 	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/Dummy/", a.GetWithFail)
-}
-
-type autoTypeConfigHello struct{}
-
-// Method() KV should contain type string
-func (autoTypeConfigHello) Method() paths.Path[string] {
-	return paths.NewPath("wagtest/Config/Hello/Method", codecs.NewJsonCodec[string]())
-}
-
-// Get fetches all fields of NestedExternal in one or more transactions pinned to the same etcd revision.
-func (a autoTypeConfigHello) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.NestedExternal, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Method())
-	if err := txn0.Commit(); err != nil {
-		return result, err
-	}
-	result.Method, err = h0_0.Value()
-	if err != nil && failEarly {
-		return result, err
-	}
-	return result, nil
-}
-func (a autoTypeConfigHello) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result config.NestedExternal, err error) {
-	return a.GetWithFail(ctx, cli, false, opts...)
-}
-
-// Watch returns a Watcher that emits the full NestedExternal struct whenever any sub-key changes.
-func (a autoTypeConfigHello) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[config.NestedExternal] {
-	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/Hello/", a.GetWithFail)
 }
 
 type autoTypeConfigServer struct{}
@@ -102,10 +72,10 @@ func (autoTypeConfigServer) Toaster() paths.Path[string] {
 // Get fetches all fields of ServerConfig in one or more transactions pinned to the same etcd revision.
 func (a autoTypeConfigServer) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.ServerConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Host())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.Port())
-	h0_2 := tetcd.GetTx(txn0.Then(), a.Test())
-	h0_3 := tetcd.GetTx(txn0.Then(), a.Toaster())
+	h0_0 := txn0.Then().Get(a.Host())
+	h0_1 := txn0.Then().Get(a.Port())
+	h0_2 := txn0.Then().Get(a.Test())
+	h0_3 := txn0.Then().Get(a.Toaster())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -143,18 +113,12 @@ func (autoTypeConfigSomethingElse) Extra() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/SomethingElse/Extra", codecs.NewJsonCodec[string]())
 }
 
-// Method() KV should contain type string
-func (autoTypeConfigSomethingElse) Method() paths.Path[string] {
-	return paths.NewPath("wagtest/Config/SomethingElse/Method", codecs.NewJsonCodec[string]())
-}
-
 // Methods() is a map path with prefix wagtest/Config/SomethingElse/Methods, value type string
 func (autoTypeConfigSomethingElse) Methods() paths.MapPath[string] {
 	return paths.NewMapPath("wagtest/Config/SomethingElse/Methods", codecs.NewJsonCodec[string](), true)
 }
 
 type resultConfigSomethingElse struct {
-	another.SomeType
 	Extra   string
 	Methods []string
 }
@@ -162,9 +126,8 @@ type resultConfigSomethingElse struct {
 // Get fetches all fields of resultConfigSomethingElse in one or more transactions pinned to the same etcd revision.
 func (a autoTypeConfigSomethingElse) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultConfigSomethingElse, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Extra())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.Method())
-	h0_2 := tetcd.ListTx(txn0.Then(), a.Methods())
+	h0_0 := txn0.Then().Get(a.Extra())
+	h0_1 := txn0.Then().List(a.Methods())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -172,11 +135,7 @@ func (a autoTypeConfigSomethingElse) GetWithFail(ctx context.Context, cli *v3.Cl
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.Method, err = h0_1.Value()
-	if err != nil && failEarly {
-		return result, err
-	}
-	result.Methods, err = h0_2.Keys()
+	result.Methods, err = h0_1.Keys()
 	if err != nil && failEarly {
 		return result, err
 	}
@@ -189,35 +148,6 @@ func (a autoTypeConfigSomethingElse) Get(ctx context.Context, cli *v3.Client, op
 // Watch returns a Watcher that emits the full resultConfigSomethingElse struct whenever any sub-key changes.
 func (a autoTypeConfigSomethingElse) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[resultConfigSomethingElse] {
 	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/SomethingElse/", a.GetWithFail)
-}
-
-type autoTypeTLSAhh struct{}
-
-// Method() KV should contain type string
-func (autoTypeTLSAhh) Method() paths.Path[string] {
-	return paths.NewPath("wagtest/Config/TLS/Ahh/Method", codecs.NewJsonCodec[string]())
-}
-
-// Get fetches all fields of SomeType in one or more transactions pinned to the same etcd revision.
-func (a autoTypeTLSAhh) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
-	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Method())
-	if err := txn0.Commit(); err != nil {
-		return result, err
-	}
-	result.Method, err = h0_0.Value()
-	if err != nil && failEarly {
-		return result, err
-	}
-	return result, nil
-}
-func (a autoTypeTLSAhh) Get(ctx context.Context, cli *v3.Client, opts ...tetcd.TxnOp) (result another.SomeType, err error) {
-	return a.GetWithFail(ctx, cli, false, opts...)
-}
-
-// Watch returns a Watcher that emits the full SomeType struct whenever any sub-key changes.
-func (a autoTypeTLSAhh) Watch(ctx context.Context, cli *v3.Client) *watch.Watcher[another.SomeType] {
-	return specialist.NewAllWatcher(ctx, cli, "wagtest/Config/TLS/Ahh/", a.GetWithFail)
 }
 
 type autoTypeNestedInTlsDoublyNested struct{}
@@ -234,7 +164,7 @@ type resultNestedInTlsDoublyNested struct {
 // Get fetches all fields of resultNestedInTlsDoublyNested in one or more transactions pinned to the same etcd revision.
 func (a autoTypeNestedInTlsDoublyNested) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultNestedInTlsDoublyNested, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Arghh())
+	h0_0 := txn0.Then().Get(a.Arghh())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -284,10 +214,10 @@ type resultTLSNestedInTls struct {
 // Get fetches all fields of resultTLSNestedInTls in one or more transactions pinned to the same etcd revision.
 func (a autoTypeTLSNestedInTls) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result resultTLSNestedInTls, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.DoublyNested.Arghh())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.Fronk())
-	h0_2 := tetcd.GetTx(txn0.Then(), a.Number())
-	h0_3 := tetcd.GetTx(txn0.Then(), a.Something())
+	h0_0 := txn0.Then().Get(a.DoublyNested.Arghh())
+	h0_1 := txn0.Then().Get(a.Fronk())
+	h0_2 := txn0.Then().Get(a.Number())
+	h0_3 := txn0.Then().Get(a.Something())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -333,8 +263,8 @@ func (autoTypeTLSYar) Document() paths.Path[[]byte] {
 // Get fetches all fields of Configuration in one or more transactions pinned to the same etcd revision.
 func (a autoTypeTLSYar) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.Configuration, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Created())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.Document())
+	h0_0 := txn0.Then().Get(a.Created())
+	h0_1 := txn0.Then().Get(a.Document())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
@@ -358,7 +288,6 @@ func (a autoTypeTLSYar) Watch(ctx context.Context, cli *v3.Client) *watch.Watche
 }
 
 type autoTypeConfigTLS struct {
-	Ahh         autoTypeTLSAhh
 	NestedInTls autoTypeTLSNestedInTls
 	Yar         autoTypeTLSYar
 }
@@ -391,66 +320,61 @@ func (autoTypeConfigTLS) SomeStrings() paths.MapPath[string] {
 // Get fetches all fields of TLSConfig in one or more transactions pinned to the same etcd revision.
 func (a autoTypeConfigTLS) GetWithFail(ctx context.Context, cli *v3.Client, failEarly bool, opts ...tetcd.TxnOp) (result config.TLSConfig, err error) {
 	txn0 := tetcd.NewTxn(ctx, cli, opts...)
-	h0_0 := tetcd.GetTx(txn0.Then(), a.Ahh.Method())
-	h0_1 := tetcd.GetTx(txn0.Then(), a.CertFile())
-	h0_2 := tetcd.DynamicCollectionTx(txn0.Then(), a.Groups())
-	h0_3 := tetcd.GetTx(txn0.Then(), a.KeyFile())
-	h0_4 := tetcd.GetTx(txn0.Then(), a.NestedInTls.DoublyNested.Arghh())
-	h0_5 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Fronk())
-	h0_6 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Number())
-	h0_7 := tetcd.GetTx(txn0.Then(), a.NestedInTls.Something())
-	h0_8 := tetcd.GetTx(txn0.Then(), a.SomeBytes())
-	h0_9 := tetcd.ListTx(txn0.Then(), a.SomeStrings())
-	h0_10 := tetcd.GetTx(txn0.Then(), a.Yar.Created())
-	h0_11 := tetcd.GetTx(txn0.Then(), a.Yar.Document())
+	h0_0 := txn0.Then().Get(a.CertFile())
+	h0_1 := txn0.Then().DynamicCollection(a.Groups())
+	h0_2 := txn0.Then().Get(a.KeyFile())
+	h0_3 := txn0.Then().Get(a.NestedInTls.DoublyNested.Arghh())
+	h0_4 := txn0.Then().Get(a.NestedInTls.Fronk())
+	h0_5 := txn0.Then().Get(a.NestedInTls.Number())
+	h0_6 := txn0.Then().Get(a.NestedInTls.Something())
+	h0_7 := txn0.Then().Get(a.SomeBytes())
+	h0_8 := txn0.Then().List(a.SomeStrings())
+	h0_9 := txn0.Then().Get(a.Yar.Created())
+	h0_10 := txn0.Then().Get(a.Yar.Document())
 	if err := txn0.Commit(); err != nil {
 		return result, err
 	}
-	result.Ahh.Method, err = h0_0.Value()
+	result.CertFile, err = h0_0.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.CertFile, err = h0_1.Value()
+	result.Groups, err = h0_1.Keys()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.Groups, err = h0_2.Keys()
+	result.KeyFile, err = h0_2.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.KeyFile, err = h0_3.Value()
+	result.NestedInTls.DoublyNested.Arghh, err = h0_3.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.DoublyNested.Arghh, err = h0_4.Value()
+	result.NestedInTls.Fronk, err = h0_4.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.Fronk, err = h0_5.Value()
+	result.NestedInTls.Number, err = h0_5.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.Number, err = h0_6.Value()
+	result.NestedInTls.Something, err = h0_6.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.NestedInTls.Something, err = h0_7.Value()
+	result.SomeBytes, err = h0_7.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.SomeBytes, err = h0_8.Value()
+	result.SomeStrings, err = h0_8.Keys()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.SomeStrings, err = h0_9.Keys()
+	result.Yar.Created, err = h0_9.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
-	result.Yar.Created, err = h0_10.Value()
-	if err != nil && failEarly {
-		return result, err
-	}
-	result.Yar.Document, err = h0_11.Value()
+	result.Yar.Document, err = h0_10.Value()
 	if err != nil && failEarly {
 		return result, err
 	}
@@ -467,7 +391,6 @@ func (a autoTypeConfigTLS) Watch(ctx context.Context, cli *v3.Client) *watch.Wat
 
 type autoTypeConfig struct {
 	Dummy         autoTypeConfigDummy
-	Hello         autoTypeConfigHello
 	Server        autoTypeConfigServer
 	SomethingElse autoTypeConfigSomethingElse
 	TLS           autoTypeConfigTLS
@@ -510,7 +433,7 @@ func (autoTypeConfig) Tags() paths.Path[[]string] {
 
 var (
 	Config       = autoTypeConfig{}
-	ConfigDiffer = tree.NewTreeWithPrefix[config.Config]("wagtest/Config", "version")
+	ConfigDiffer = tree.NewTreeWithPrefix[config.Config]("wagtest", "Config")
 )
 
 // init() builds the tree structure to automatically apply diffs to etcd
@@ -518,7 +441,6 @@ func init() {
 	ConfigDiffer.Register(Config.CompressMe())
 	ConfigDiffer.Register(Config.Dummy.Something5())
 	ConfigDiffer.Register(Config.EnumMap())
-	ConfigDiffer.Register(Config.Hello.Method())
 	ConfigDiffer.Register(Config.Labels())
 	ConfigDiffer.Register(Config.MapTest())
 	ConfigDiffer.Register(Config.Methods1())
@@ -528,9 +450,7 @@ func init() {
 	ConfigDiffer.Register(Config.Server.Test())
 	ConfigDiffer.Register(Config.Server.Toaster())
 	ConfigDiffer.Register(Config.SomethingElse.Extra())
-	ConfigDiffer.Register(Config.SomethingElse.Method())
 	ConfigDiffer.Register(Config.SomethingElse.Methods())
-	ConfigDiffer.Register(Config.TLS.Ahh.Method())
 	ConfigDiffer.Register(Config.TLS.CertFile())
 	ConfigDiffer.Register(Config.TLS.Groups())
 	ConfigDiffer.Register(Config.TLS.KeyFile())
