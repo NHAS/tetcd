@@ -136,7 +136,7 @@ func modify(mode txnMode, txn *SubTxn, modifer modFunc) *SubTxn {
 
 // GetTx queues a typed GET for a single-key Path in the transaction.
 // The returned *GetHandle[T] can be used after Commit() to retrieve the value.
-func GetTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOption) *GetHandle[T] {
+func (t *TxnConditional) Get[T any](path paths.Path[T], opts ...clientv3.OpOption) *GetHandle[T] {
 	result := &GetHandle[T]{
 		codec: path.Codec(),
 		key:   path.Key(),
@@ -157,7 +157,7 @@ func GetTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOpti
 
 // DynamicCollectionTx queues a prefix GET for a MapSlicePath and returns a *ListSliceHandle[T].
 // After Commit(), call Entries() to get the full map[string]map[string]V result.
-func DynamicCollectionTx[T any](t *TxnConditional, path paths.MapSlicePath[T], opts ...clientv3.OpOption) *DynamicHandle[T] {
+func (t *TxnConditional) DynamicCollection[T any](path paths.MapSlicePath[T], opts ...clientv3.OpOption) *DynamicHandle[T] {
 	result := &DynamicHandle[T]{
 		codec:        path.Codec(),
 		prefix:       path.Prefix(),
@@ -179,14 +179,14 @@ func DynamicCollectionTx[T any](t *TxnConditional, path paths.MapSlicePath[T], o
 	return result
 }
 
-// ListTx queues a prefix GET for a MapPath and returns a *ListHandle[T].
+// List queues a prefix GET for a MapPath and returns a *ListHandle[T].
 // This covers the "get all keys under a prefix" pattern used in GetEffectiveAcl
 // for reading group membership, DNS entries, and ACL policies by prefix.
 //
 // Example:
 //
 //	memberHandle := ListTx(thenCond, Paths.GroupMembership.Key(username), clientv3.WithKeysOnly())
-func ListTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...clientv3.OpOption) *ListHandle[T] {
+func (t *TxnConditional) List[T any](path paths.MapPath[T], opts ...clientv3.OpOption) *ListHandle[T] {
 	result := &ListHandle[T]{
 		codec:        path.Codec(),
 		prefix:       path.Prefix(),
@@ -209,7 +209,7 @@ func ListTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...clientv3.Op
 }
 
 // PutTx queues a typed PUT in the transaction.
-func PutTx[T any](t *TxnConditional, path paths.Path[T], value T, opts ...clientv3.OpOption) error {
+func (t *TxnConditional) Put[T any](path paths.Path[T], value T, opts ...clientv3.OpOption) error {
 	data, err := path.Codec().Encode(value)
 	if err != nil {
 		return fmt.Errorf("failed to encode: %q, %w", path.Key(), err)
@@ -229,7 +229,7 @@ func PutTx[T any](t *TxnConditional, path paths.Path[T], value T, opts ...client
 }
 
 // DeleteTx queues a DELETE in the transaction.
-func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpOption) *DeleteHandle[T] {
+func (t *TxnConditional) Delete[T any](path paths.Path[T], opts ...clientv3.OpOption) *DeleteHandle[T] {
 	result := &DeleteHandle[T]{
 		codec: path.Codec(),
 		key:   path.Key(),
@@ -248,7 +248,7 @@ func DeleteTx[T any](t *TxnConditional, path paths.Path[T], opts ...clientv3.OpO
 	return result
 }
 
-func DeletePrefixTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...clientv3.OpOption) *DeleteHandle[T] {
+func (t *TxnConditional) DeletePrefix[T any](path paths.MapPath[T], opts ...clientv3.OpOption) *DeleteHandle[T] {
 	result := &DeleteHandle[T]{
 		codec: path.Codec(),
 		key:   path.Prefix(),
@@ -268,7 +268,7 @@ func DeletePrefixTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...cli
 	return result
 }
 
-// SubTx creates a nested sub-transaction within the given branch.
+// Txn creates a nested sub-transaction within the given branch.
 // The sub-transaction's conditions/then/else are built on the returned *SubTxn
 // before Commit() is called on the root Txn.
 //
@@ -278,7 +278,7 @@ func DeletePrefixTx[T any](t *TxnConditional, path paths.MapPath[T], opts ...cli
 //	elseCond, _ := SubTx(elseBranch)
 //	innerThen, innerElse := elseCond.Conditional(clientv3util.KeyExists(...))
 //	PutTx(innerThen, ...)
-func SubTx(t *TxnConditional) *SubTxn {
+func (t *TxnConditional) Txn() *SubTxn {
 	r := &SubTxn{
 		rev: t.txn.rev,
 	}
@@ -549,7 +549,7 @@ func (h *ListHandle[T]) parse(resp *etcdserverpb.ResponseOp) error {
 	return nil
 }
 
-// Entries returns the decoded key→value map for a non-keys-only scan.
+// Entries returns the decoded key -> value map for a non-keys-only scan.
 // Returns paths.ErrNotFound when no keys were present under the prefix.
 func (h *ListHandle[T]) Entries() (map[string]T, error) {
 	if h.err != nil {
@@ -563,7 +563,7 @@ func (h *ListHandle[T]) Entries() (map[string]T, error) {
 		return nil, ErrKeysOnly
 	}
 
-	if h.items == nil {
+	if len(h.items) == 0 {
 		return nil, paths.ErrNotFound
 	}
 	return h.items, nil
@@ -575,7 +575,7 @@ func (h *ListHandle[T]) Keys() ([]string, error) {
 	if h.err != nil {
 		return nil, h.err
 	}
-	if h.keys == nil {
+	if len(h.keys) == 0 {
 		return nil, paths.ErrNotFound
 	}
 	return h.keys, nil
@@ -735,7 +735,7 @@ func (h *DynamicHandle[T]) Entries() (map[string]map[string]T, error) {
 		return nil, fmt.Errorf("Entries() called on a presence-only ListSliceHandle, use Keys()")
 	}
 
-	if h.items == nil {
+	if len(h.items) == 0 {
 		return nil, paths.ErrNotFound
 	}
 	return h.items, nil

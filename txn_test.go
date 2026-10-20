@@ -39,7 +39,7 @@ func TestTxn_UnconditionalPutAndGet(t *testing.T) {
 	p := TestPaths.SingleKey("put-get")
 
 	put := NewTxn(ctx, client)
-	if err := PutTx(put.Then(), p, "hello"); err != nil {
+	if err := put.Then().Put(p, "hello"); err != nil {
 		t.Fatalf("PutTx failed: %v", err)
 	}
 	if err := put.Commit(); err != nil {
@@ -47,7 +47,7 @@ func TestTxn_UnconditionalPutAndGet(t *testing.T) {
 	}
 
 	get := NewTxn(ctx, client)
-	h := GetTx(get.Then(), p)
+	h := get.Then().Get(p)
 	if err := get.Commit(); err != nil {
 		t.Fatalf("Commit (get) failed: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestTxn_UnconditionalDelete(t *testing.T) {
 	}
 
 	del := NewTxn(ctx, client)
-	DeleteTx(del.Then(), p)
+	del.Then().Delete(p)
 	if err := del.Commit(); err != nil {
 		t.Fatalf("Commit (delete) failed: %v", err)
 	}
@@ -109,10 +109,10 @@ func TestTxn_ConditionalThenBranch(t *testing.T) {
 	txn := NewTxn(ctx, client)
 	thenCond, elseCond := txn.Conditional(clientv3util.KeyExists(p.Key()))
 
-	if err := PutTx(thenCond, p, "updated"); err != nil {
+	if err := thenCond.Put(p, "updated"); err != nil {
 		t.Fatalf("PutTx (then) failed: %v", err)
 	}
-	if err := PutTx(elseCond, p, "created"); err != nil {
+	if err := elseCond.Put(p, "created"); err != nil {
 		t.Fatalf("PutTx (else) failed: %v", err)
 	}
 
@@ -147,10 +147,10 @@ func TestTxn_ConditionalElseBranch(t *testing.T) {
 	txn := NewTxn(ctx, client)
 	thenCond, elseCond := txn.Conditional(clientv3util.KeyExists(p.Key()))
 
-	if err := PutTx(thenCond, p, "should-not-appear"); err != nil {
+	if err := thenCond.Put(p, "should-not-appear"); err != nil {
 		t.Fatalf("PutTx (then) failed: %v", err)
 	}
-	if err := PutTx(elseCond, p, "else-value"); err != nil {
+	if err := elseCond.Put(p, "else-value"); err != nil {
 		t.Fatalf("PutTx (else) failed: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestTxn_GetHandle_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	txn := NewTxn(ctx, client)
-	h := GetTx(txn.Then(), TestPaths.SingleKey("does-not-exist"))
+	h := txn.Then().Get(TestPaths.SingleKey("does-not-exist"))
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestTxn_GetHandle_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ErrNotDone, got nil")
 	}
-	if err != ErrNotDone {
+	if err != paths.ErrNotFound {
 		t.Errorf("expected ErrNotDone, got %v", err)
 	}
 }
@@ -219,7 +219,7 @@ func TestTxn_ListTx_Entries(t *testing.T) {
 	}
 
 	txn := NewTxn(ctx, client)
-	h := ListTx(txn.Then(), mp)
+	h := txn.Then().List(mp)
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestTxn_ListTx_KeysOnly(t *testing.T) {
 	}
 
 	txn := NewTxn(ctx, client)
-	h := ListTx(txn.Then(), mp, clientv3.WithKeysOnly())
+	h := txn.Then().List(mp, clientv3.WithKeysOnly())
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -274,14 +274,14 @@ func TestTxn_ListTx_EmptyPrefix(t *testing.T) {
 	ctx := context.Background()
 
 	txn := NewTxn(ctx, client)
-	h := ListTx(txn.Then(), TestPaths.MapPrefix("empty-prefix"))
+	h := txn.Then().List(TestPaths.MapPrefix("empty-prefix"))
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
 
-	_, err := h.Entries()
+	i, err := h.Entries()
 	if err != paths.ErrNotFound {
-		t.Fatalf("Entries() should have failed on empty prefix: %v", err)
+		t.Fatalf("Entries() should have failed on empty prefix: %v: %v", err, i)
 	}
 
 	_, err = h.Keys()
@@ -309,13 +309,13 @@ func TestTxn_SubTx_InnerThenBranch(t *testing.T) {
 	txn := NewTxn(ctx, client)
 	outerThen, _ := txn.Conditional(clientv3util.KeyExists(outerPath.Key()))
 
-	sub := SubTx(outerThen)
+	sub := outerThen.Txn()
 	innerThen, innerElse := sub.Conditional(clientv3util.KeyMissing(innerPath.Key()))
 
-	if err := PutTx(innerThen, innerPath, "created-by-inner-then"); err != nil {
+	if err := innerThen.Put(innerPath, "created-by-inner-then"); err != nil {
 		t.Fatalf("PutTx inner then failed: %v", err)
 	}
-	if err := PutTx(innerElse, innerPath, "created-by-inner-else"); err != nil {
+	if err := innerElse.Put(innerPath, "created-by-inner-else"); err != nil {
 		t.Fatalf("PutTx inner else failed: %v", err)
 	}
 
@@ -351,7 +351,7 @@ func TestTxn_MultipleOpsInThen(t *testing.T) {
 	subKeys := []string{"a", "b", "c"}
 	for _, k := range subKeys {
 		p := TestPaths.SingleKey("multi/" + k)
-		if err := PutTx(then, p, k+"-value"); err != nil {
+		if err := then.Put(p, k+"-value"); err != nil {
 			t.Fatalf("PutTx(%s) failed: %v", k, err)
 		}
 	}
@@ -396,9 +396,9 @@ func TestTxn_ConditionalThen_MixedOps(t *testing.T) {
 	txn := NewTxn(ctx, client)
 	thenCond, _ := txn.Conditional(clientv3util.KeyExists(existingPath.Key()))
 
-	getH := GetTx(thenCond, existingPath)
-	DeleteTx(thenCond, deletePath)
-	if err := PutTx(thenCond, newPath, "brand-new"); err != nil {
+	getH := thenCond.Get(existingPath)
+	thenCond.Delete(deletePath)
+	if err := thenCond.Put(newPath, "brand-new"); err != nil {
 		t.Fatalf("PutTx failed: %v", err)
 	}
 
@@ -465,8 +465,8 @@ func TestTxn_ConditionalGet_OnlyTakenBranchResolves(t *testing.T) {
 	txn := NewTxn(ctx, client)
 	thenCond, elseCond := txn.Conditional(clientv3util.KeyExists(triggerPath.Key()))
 
-	thenH := GetTx(thenCond, thenReadPath)
-	elseH := GetTx(elseCond, elseReadPath)
+	thenH := thenCond.Get(thenReadPath)
+	elseH := elseCond.Get(elseReadPath)
 
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
@@ -501,7 +501,7 @@ func TestTxn_PutOverwrite(t *testing.T) {
 
 	// first write
 	txn := NewTxn(ctx, client)
-	if err := PutTx(txn.Then(), p, "v1"); err != nil {
+	if err := txn.Then().Put(p, "v1"); err != nil {
 		t.Fatalf("first PutTx failed: %v", err)
 	}
 	if err := txn.Commit(); err != nil {
@@ -510,7 +510,7 @@ func TestTxn_PutOverwrite(t *testing.T) {
 
 	// overwrite in a second txn
 	txn2 := NewTxn(ctx, client)
-	if err := PutTx(txn2.Then(), p, "v2"); err != nil {
+	if err := txn2.Then().Put(p, "v2"); err != nil {
 		t.Fatalf("second PutTx failed: %v", err)
 	}
 	if err := txn2.Commit(); err != nil {
@@ -547,13 +547,13 @@ func TestTxn_SubTx_OuterElse_InnerElseBranch(t *testing.T) {
 	txn := NewTxn(ctx, client)
 	_, outerElse := txn.Conditional(clientv3util.KeyExists(outerPath.Key()))
 
-	sub := SubTx(outerElse)
+	sub := outerElse.Txn()
 	innerThen, innerElse := sub.Conditional(clientv3util.KeyMissing(innerPath.Key()))
 
-	if err := PutTx(innerThen, resultPath, "from-inner-then"); err != nil {
+	if err := innerThen.Put(resultPath, "from-inner-then"); err != nil {
 		t.Fatalf("PutTx innerThen failed: %v", err)
 	}
-	if err := PutTx(innerElse, resultPath, "from-inner-else"); err != nil {
+	if err := innerElse.Put(resultPath, "from-inner-else"); err != nil {
 		t.Fatalf("PutTx innerElse failed: %v", err)
 	}
 
@@ -593,7 +593,7 @@ func TestTxn_ListTx_AfterPutTx(t *testing.T) {
 	for k, v := range entries {
 		p := paths.NewPath(mp.Prefix()+k, codecs.NewJsonCodec[string]())
 		txn := NewTxn(ctx, client)
-		if err := PutTx(txn.Then(), p, v); err != nil {
+		if err := txn.Then().Put(p, v); err != nil {
 			t.Fatalf("PutTx failed: %v", err)
 		}
 		if err := txn.Commit(); err != nil {
@@ -603,7 +603,7 @@ func TestTxn_ListTx_AfterPutTx(t *testing.T) {
 
 	// list them back
 	txn := NewTxn(ctx, client)
-	h := ListTx(txn.Then(), mp)
+	h := txn.Then().List(mp)
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("ListTx Commit failed: %v", err)
 	}
@@ -641,7 +641,7 @@ func TestTxn_ListTx_KeysStrippedOfPrefix(t *testing.T) {
 	}
 
 	txn := NewTxn(ctx, client)
-	h := ListTx(txn.Then(), mp, clientv3.WithKeysOnly())
+	h := txn.Then().List(mp, clientv3.WithKeysOnly())
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -689,10 +689,10 @@ func TestTxn_ConditionalMultipleConditions(t *testing.T) {
 		clientv3util.KeyExists(p2.Key()),
 	)
 
-	if err := PutTx(thenCond, result, "both-exist"); err != nil {
+	if err := thenCond.Put(result, "both-exist"); err != nil {
 		t.Fatalf("PutTx then failed: %v", err)
 	}
-	if err := PutTx(elseCond, result, "not-both"); err != nil {
+	if err := elseCond.Put(result, "not-both"); err != nil {
 		t.Fatalf("PutTx else failed: %v", err)
 	}
 
@@ -733,10 +733,10 @@ func TestTxn_ConditionalMultipleConditions_OneFails(t *testing.T) {
 		clientv3util.KeyExists(p2.Key()),
 	)
 
-	if err := PutTx(thenCond, result, "both-exist"); err != nil {
+	if err := thenCond.Put(result, "both-exist"); err != nil {
 		t.Fatalf("PutTx then failed: %v", err)
 	}
-	if err := PutTx(elseCond, result, "not-both"); err != nil {
+	if err := elseCond.Put(result, "not-both"); err != nil {
 		t.Fatalf("PutTx else failed: %v", err)
 	}
 
@@ -769,7 +769,7 @@ func TestTxn_GetHandle_KeyReturnsPath(t *testing.T) {
 	p := TestPaths.SingleKey("handle-key-check")
 
 	txn := NewTxn(ctx, client)
-	h := GetTx(txn.Then(), p)
+	h := txn.Then().Get(p)
 	// no need to commit — key is set at construction time
 	_ = txn.Commit()
 
@@ -833,22 +833,22 @@ func TestTxn_DeepNesting_AllFourPaths(t *testing.T) {
 			rootThen, rootElse := txn.Conditional(clientv3util.KeyExists(pathA.Key()))
 
 			// then-subtx: A exists
-			thenSub := SubTx(rootThen)
+			thenSub := rootThen.Txn()
 			thenSubThen, thenSubElse := thenSub.Conditional(clientv3util.KeyExists(pathB.Key()))
-			if err := PutTx(thenSubThen, resultPath, "A-and-B"); err != nil {
+			if err := thenSubThen.Put(resultPath, "A-and-B"); err != nil {
 				t.Fatalf("PutTx A-and-B failed: %v", err)
 			}
-			if err := PutTx(thenSubElse, resultPath, "A-not-B"); err != nil {
+			if err := thenSubElse.Put(resultPath, "A-not-B"); err != nil {
 				t.Fatalf("PutTx A-not-B failed: %v", err)
 			}
 
 			// else-subtx: A missing
-			elseSub := SubTx(rootElse)
+			elseSub := rootElse.Txn()
 			elseSubThen, elseSubElse := elseSub.Conditional(clientv3util.KeyExists(pathB.Key()))
-			if err := PutTx(elseSubThen, resultPath, "B-not-A"); err != nil {
+			if err := elseSubThen.Put(resultPath, "B-not-A"); err != nil {
 				t.Fatalf("PutTx B-not-A failed: %v", err)
 			}
-			if err := PutTx(elseSubElse, resultPath, "neither"); err != nil {
+			if err := elseSubElse.Put(resultPath, "neither"); err != nil {
 				t.Fatalf("PutTx neither failed: %v", err)
 			}
 
@@ -891,7 +891,7 @@ func TestTxn_DeleteHandle_DeletedCount(t *testing.T) {
 	}
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p)
+	h := txn.Then().Delete(p)
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -913,7 +913,7 @@ func TestTxn_DeleteHandle_DeletedCount_KeyMissing(t *testing.T) {
 	p := TestPaths.SingleKey("delete-handle-count-missing")
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p)
+	h := txn.Then().Delete(p)
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -938,7 +938,7 @@ func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
 	ctx := context.Background()
 	p := TestPaths.SingleKey("delete-handle-prevkv")
 
-	if err := PutTx(NewTxn(ctx, client).Then(), p, "original"); err != nil {
+	if err := NewTxn(ctx, client).Then().Put(p, "original"); err != nil {
 		t.Fatalf("seed PutTx failed: %v", err)
 	}
 	if err := NewTxn(ctx, client).Commit(); err != nil {
@@ -947,7 +947,7 @@ func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
 
 	// Use a fresh txn to actually write the seed value
 	seedTxn := NewTxn(ctx, client)
-	if err := PutTx(seedTxn.Then(), p, "original"); err != nil {
+	if err := seedTxn.Then().Put(p, "original"); err != nil {
 		t.Fatalf("seed PutTx failed: %v", err)
 	}
 	if err := seedTxn.Commit(); err != nil {
@@ -955,7 +955,7 @@ func TestTxn_DeleteHandle_PrevValue(t *testing.T) {
 	}
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p, clientv3.WithPrevKV())
+	h := txn.Then().Delete(p, clientv3.WithPrevKV())
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -985,7 +985,7 @@ func TestTxn_DeleteHandle_PrevValue_NotFound_WhenNoPrevKVOption(t *testing.T) {
 	p := TestPaths.SingleKey("delete-handle-no-prevkv")
 
 	seedTxn := NewTxn(ctx, client)
-	if err := PutTx(seedTxn.Then(), p, "data"); err != nil {
+	if err := seedTxn.Then().Put(p, "data"); err != nil {
 		t.Fatalf("seed PutTx failed: %v", err)
 	}
 	if err := seedTxn.Commit(); err != nil {
@@ -993,7 +993,7 @@ func TestTxn_DeleteHandle_PrevValue_NotFound_WhenNoPrevKVOption(t *testing.T) {
 	}
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p) // no WithPrevKV
+	h := txn.Then().Delete(p) // no WithPrevKV
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -1012,7 +1012,7 @@ func TestTxn_DeleteHandle_PrevValue_KeyMissing(t *testing.T) {
 	p := TestPaths.SingleKey("delete-handle-prevkv-missing")
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p, clientv3.WithPrevKV())
+	h := txn.Then().Delete(p, clientv3.WithPrevKV())
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestTxn_DeleteHandle_ErrNotDone(t *testing.T) {
 	p := TestPaths.SingleKey("delete-handle-notdone")
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p)
+	h := txn.Then().Delete(p)
 	// deliberately do NOT commit
 
 	if _, err := h.Deleted(); err != ErrNotDone {
@@ -1066,7 +1066,7 @@ func TestTxn_DeleteHandle_KeyReturnsPath(t *testing.T) {
 	p := TestPaths.SingleKey("delete-handle-key")
 
 	txn := NewTxn(ctx, client)
-	h := DeleteTx(txn.Then(), p)
+	h := txn.Then().Delete(p)
 	_ = txn.Commit()
 
 	if h.Key() != p.Key() {
@@ -1087,10 +1087,10 @@ func TestTxn_DeleteHandle_InConditionalThenBranch(t *testing.T) {
 	deletePath := TestPaths.SingleKey("delete-cond-target")
 
 	seedTxn := NewTxn(ctx, client)
-	if err := PutTx(seedTxn.Then(), triggerPath, "trigger"); err != nil {
+	if err := seedTxn.Then().Put(triggerPath, "trigger"); err != nil {
 		t.Fatalf("seed trigger failed: %v", err)
 	}
-	if err := PutTx(seedTxn.Then(), deletePath, "to-delete"); err != nil {
+	if err := seedTxn.Then().Put(deletePath, "to-delete"); err != nil {
 		t.Fatalf("seed target failed: %v", err)
 	}
 	if err := seedTxn.Commit(); err != nil {
@@ -1099,7 +1099,7 @@ func TestTxn_DeleteHandle_InConditionalThenBranch(t *testing.T) {
 
 	txn := NewTxn(ctx, client)
 	thenCond, _ := txn.Conditional(clientv3util.KeyExists(triggerPath.Key()))
-	h := DeleteTx(thenCond, deletePath, clientv3.WithPrevKV())
+	h := thenCond.Delete(deletePath, clientv3.WithPrevKV())
 
 	if err := txn.Commit(); err != nil {
 		t.Fatalf("Commit failed: %v", err)

@@ -549,23 +549,23 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 		// then the leaf accessor.
 		accessorChain := buildFieldAccess(jen.Id("a"), lp, path, root, true)
 
-		txFunc := "GetTx"
+		txFunc := "Get"
 		if !lp.leaf.single && !lp.leaf.isCompressed {
-			txFunc = "ListTx"
+			txFunc = "List"
 
 			switch ut := lp.leaf.typeDef.Underlying().(type) {
 			case *types.Map:
 				switch ut.Elem().Underlying().(type) {
 
 				case *types.Slice, *types.Array, *types.Map:
-					txFunc = "DynamicCollectionTx"
+					txFunc = "DynamicCollection"
 				}
 			case *types.Slice:
 				basic, ok := ut.Elem().Underlying().(*types.Basic)
 				if ok {
 					switch basic.Kind() {
 					case types.Uint8:
-						txFunc = "GetTx"
+						txFunc = "Get"
 					}
 				}
 			case *types.Array:
@@ -573,7 +573,7 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 				if ok {
 					switch basic.Kind() {
 					case types.Uint8:
-						txFunc = "GetTx"
+						txFunc = "Get"
 					}
 				}
 			}
@@ -583,11 +583,11 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 		var getTxCall *jen.Statement
 		if batchIdx > 0 {
 			extraOpts := jen.Qual("go.etcd.io/etcd/client/v3", "WithRev").Call(jen.Id("rev"))
-			getTxCall = jen.Id(handleVar).Op(":=").Qual(tetcdPkg, txFunc).Call(
-				jen.Id(txnVar).Dot("Then").Call(),
-				accessorChain,
-				extraOpts,
-			)
+			getTxCall = jen.Id(handleVar).Op(":=").
+				Call(
+					accessorChain,
+					extraOpts,
+				)
 		} else {
 			getTxCall = jen.Id(handleVar).Op(":=").Qual(tetcdPkg, txFunc).Call(
 				jen.Id(txnVar).Dot("Then").Call(),
