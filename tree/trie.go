@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path"
 	"path/filepath"
 	"strings"
@@ -141,6 +142,21 @@ func (t *Tree[T]) Ignore(paths ...string) {
 	}
 }
 
+func (t *Tree[T]) Print() {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	printLayer("", t.root)
+}
+
+func printLayer(before string, item *treeNode) {
+	for name, i := range item.children {
+		next := before + "/" + name
+		log.Println(next)
+		printLayer(next, i)
+	}
+}
+
 func (t *Tree[T]) applyWithTxn(ctx context.Context, cli *clientv3.Client, plan Plan) error {
 
 	var etcdOps []clientv3.Op
@@ -241,7 +257,6 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 			fullKey = t.prefix
 		}
 		fullKey = path.Join(fullKey, t.topLevelStruct, current.key)
-
 		applier := t.root.find(fullKey)
 		if applier != nil {
 			if _, applierKind := applier.Details(); applierKind == kind.Ignored {
@@ -254,10 +269,8 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 				action: func(ctx context.Context, cli *clientv3.Client) ([]clientv3.Op, error) {
 					return applier.Apply(ctx, cli, current.change)
 				},
-				ChangeItem: ChangeItem{
-					key:    fullKey,
-					change: current.change,
-				},
+				key:    fullKey,
+				change: current.change,
 			})
 			continue
 		}
