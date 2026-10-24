@@ -14,7 +14,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-type GetFunc[T any] func(ctx context.Context, cli *clientv3.Client, failEarly bool, opts ...tetcd.TxnOp) (result T, err error)
+type GetFunc[T any] func(ctx context.Context, cli *clientv3.Client, opts ...tetcd.TxnOp) (result T, err error)
 
 func NewAllWatcher[T any](ctx context.Context, cli *clientv3.Client, prefix string, get GetFunc[T]) *watch.Watcher[T] {
 	var (
@@ -37,7 +37,7 @@ func NewAllWatcher[T any](ctx context.Context, cli *clientv3.Client, prefix stri
 		case mvccpb.DELETE:
 			p.Type = watch.DELETED
 
-			previous, err := get(ctx, cli, true, tetcd.WithRev(event.Kv.ModRevision-1))
+			previous, err := get(ctx, cli, tetcd.WithRev(event.Kv.ModRevision-1))
 			if err != nil {
 				return p, false, err
 			}
@@ -47,7 +47,7 @@ func NewAllWatcher[T any](ctx context.Context, cli *clientv3.Client, prefix stri
 		case mvccpb.PUT:
 			p.Type = watch.CREATED
 
-			current, err := get(ctx, cli, true, tetcd.WithRev(event.Kv.ModRevision))
+			current, err := get(ctx, cli, tetcd.WithRev(event.Kv.ModRevision))
 			if err != nil {
 				return p, false, err
 			}
@@ -55,7 +55,7 @@ func NewAllWatcher[T any](ctx context.Context, cli *clientv3.Client, prefix stri
 
 			if event.IsModify() {
 				p.Type = watch.MODIFIED
-				previous, err := get(ctx, cli, true, tetcd.WithRev(event.Kv.ModRevision-1))
+				previous, err := get(ctx, cli, tetcd.WithRev(event.Kv.ModRevision-1))
 				if err != nil {
 					return p, false, err
 				}

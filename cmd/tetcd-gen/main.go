@@ -445,17 +445,15 @@ func generateGetAll(n *node, currentPath string) []jen.Code {
 				jen.List(jen.Id("result").Add(fieldAccess), jen.Err()).
 					Op("=").Id(handleName).Dot(valueMethod).Call(),
 				jen.If(
-					jen.Err().Op("!=").Nil().
-						Op("&&").
-						Id("failEarly"),
+					jen.Err().Op("!=").Nil(),
 				).Block(
-					jen.Return(jen.Id("result"), jen.Err()),
+					jen.Id("finalErr").Op("=").Qual("errors", "Join").Call(jen.Id("finalErr"), jen.Err()),
 				),
 			)
 		}
 	}
 
-	body = append(body, jen.Return(jen.Id("result"), jen.Nil()))
+	body = append(body, jen.Return(jen.Id("result"), jen.Id("finalErr")))
 
 	fn := jen.Commentf("Get fetches all fields of %s in one or more transactions pinned to the same etcd revision.", returnTypeStr)
 	fn2 := jen.Func().
@@ -464,10 +462,9 @@ func generateGetAll(n *node, currentPath string) []jen.Code {
 		Params(
 			jen.Id("ctx").Qual("context", "Context"),
 			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
-			jen.Id("failEarly").Bool(),
 			jen.Id("opts").Op("...").Qual(tetcdPkg, "TxnOp"),
 		).
-		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
+		Params(jen.Id("result").Add(returnType), jen.Id("finalErr").Error()).
 		Block(body...)
 
 	fn3 := jen.Func().
@@ -478,13 +475,12 @@ func generateGetAll(n *node, currentPath string) []jen.Code {
 			jen.Id("cli").Op("*").Qual("go.etcd.io/etcd/client/v3", "Client"),
 			jen.Id("opts").Op("...").Qual(tetcdPkg, "TxnOp"),
 		).
-		Params(jen.Id("result").Add(returnType), jen.Id("err").Error()).
+		Params(jen.Id("result").Add(returnType), jen.Id("finalErr").Error()).
 		Block(
 			jen.Return(
 				jen.Id("a").Dot("GetWithFail").Call(
 					jen.Id("ctx"),
 					jen.Id("cli"),
-					jen.Lit(false),
 					jen.Id("opts").Op("..."),
 				),
 			),
@@ -604,8 +600,8 @@ func buildBatchStatementsFromMethods(batchIdx int, batch []leafWithPath, path st
 	}
 
 	stmts = append(stmts,
+		jen.Err().Op(":=").Id(txnVar).Dot("Commit").Call(),
 		jen.If(
-			jen.Err().Op(":=").Id(txnVar).Dot("Commit").Call(),
 			jen.Err().Op("!=").Nil(),
 		).Block(jen.Return(jen.Id("result"), jen.Err())),
 	)
