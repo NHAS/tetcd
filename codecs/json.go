@@ -23,7 +23,6 @@ func (JSONCodec[T]) Decode(data []byte) (T, error) {
 	var val T
 
 	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 
 	err := dec.Decode(&val)
 	if err != nil {
@@ -35,7 +34,6 @@ func (JSONCodec[T]) Decode(data []byte) (T, error) {
 
 func (JSONCodec[T]) DecodeToPointer(data []byte, ptr *T) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 
 	err := dec.Decode(ptr)
 	if err != nil {

@@ -58,7 +58,6 @@ func splitType(s string) (pkgPath, typeName string, err error) {
 
 func main() {
 
-	path.Join()
 	flag.StringVar(&Prefix, "prefix", "", "the global etcd key prefix")
 	flag.StringVar(&FullyQualifiedType, "type", "", "fully qualified type to analyse, e.g. github.com/some/pkg.Config (required)")
 	flag.StringVar(&Pkg, "pkg", "", "output package name (defaults to $GOPACKAGE)")

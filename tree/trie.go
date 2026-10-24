@@ -221,7 +221,6 @@ func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (
 	var validate T
 
 	dec := json.NewDecoder(bytes.NewReader(modifiedJSON))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&validate); err != nil {
 		return Plan{}, fmt.Errorf("failed to decode new config: %w", err)
 	}
