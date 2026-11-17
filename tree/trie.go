@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"log"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/NHAS/tetcd/paths"
 	"github.com/NHAS/tetcd/tree/kind"
 	jsonpatch "github.com/evanphx/json-patch"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -133,12 +133,12 @@ func (t *Tree[T]) Register(p Applier) {
 	t.root.insert(p)
 }
 
-func (t *Tree[T]) Ignore(paths ...string) {
+func (t *Tree[T]) Ignore(ignorePaths ...string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	for _, path := range paths {
-		t.root.insert(newIgnoredPath(filepath.Join(t.prefix, path)))
+	for _, path := range ignorePaths {
+		t.root.insert(newIgnoredPath(paths.Join(t.prefix, path)))
 	}
 }
 

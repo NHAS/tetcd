@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/NHAS/tetcd/codecs"
@@ -51,7 +50,7 @@ func (m MapPath[V]) PresenceOnly() bool {
 }
 
 func (m MapPath[V]) Key(k string) Path[V] {
-	return NewPath(path.Join(m.prefix, k), m.codec)
+	return NewPath(Join(m.prefix, k), m.codec)
 }
 
 func (m MapPath[V]) Count(ctx context.Context, cli *clientv3.Client) (int64, error) {
@@ -208,7 +207,7 @@ func (m MapPath[V]) Apply(ctx context.Context, cli *clientv3.Client, change json
 
 	mergeData := make([]merge, 0, len(entries))
 	for k, v := range entries {
-		etcdKey := path.Join(m.prefix, k)
+		etcdKey := Join(m.prefix, k)
 
 		// null value means delete this key
 		if string(v) == "null" {
