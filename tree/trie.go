@@ -269,9 +269,17 @@ func (t *Tree[T]) diff(key string, before, after any) ([]Op, error) {
 		}
 
 		depth := storedDepth[applierKind]
-		changes, err := compare(entries(key, before, depth), entries(key, after, depth))
-		if err != nil || len(changes) == 0 {
-			return nil, err
+		changes, err := compare(
+			// flattens things out into: {etcd key: value} pairs
+			entries(key, before, depth),
+			entries(key, after, depth),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compare entries: %w", err)
+		}
+
+		if len(changes) == 0 {
+			return nil, nil
 		}
 
 		return []Op{{
@@ -282,14 +290,21 @@ func (t *Tree[T]) diff(key string, before, after any) ([]Op, error) {
 		}}, nil
 	}
 
+	// if no applier owns this particular node we're probably an intermediery (such as a struct)
+	// thus we recurse into it
+
+	// determine if these are a value or a collection (value being "something", 1, ["im", "an", "array"])
 	beforeFields, beforeOk := before.(map[string]any)
 	afterFields, afterOk := after.(map[string]any)
+
+	// if the item isnt empty, and also isnt a collection
 	if (before != nil && !beforeOk) || (after != nil && !afterOk) {
 		return nil, fmt.Errorf("key: %q has no matching applier", key)
 	}
 
 	var ops []Op
 	for _, name := range union(beforeFields, afterFields) {
+		// for each field of the collection make sure we go through and find any differences
 		fieldOps, err := t.diff(path.Join(key, name), beforeFields[name], afterFields[name])
 		if err != nil {
 			return nil, err
@@ -301,7 +316,7 @@ func (t *Tree[T]) diff(key string, before, after any) ([]Op, error) {
 	return ops, nil
 }
 
-// compare detemine what additions or removals have taken place within a map
+// compare generate list of additions or removal have taken place between the two maps
 func compare(before, after map[string]any) ([]paths.Change, error) {
 	var result []paths.Change
 	for _, key := range union(before, after) {
@@ -334,32 +349,37 @@ func compare(before, after map[string]any) ([]paths.Change, error) {
 	return result, nil
 }
 
-// entries lists the values stored under key. Maps and arrays are split depth times, an array being a
-// set whose elements are keys, and anything below that is stored whole.
+// entries determine the layout for items under given keys
+// under a map, we recurse down until we hit something that can no longer be recursed
+// for arrays we just take them as is under a key
+// for values we just add them plain
+// Effectively flattens out values into their respective
+// {etcd key: value} pairs
 func entries(key string, value any, depth int) map[string]any {
 	result := map[string]any{}
 
-	switch v := value.(type) {
-	case nil:
-	case map[string]any:
-		if depth > 0 {
+	if value == nil {
+		return result
+	}
+
+	if depth > 0 {
+		switch v := value.(type) {
+		case map[string]any:
 			for k, child := range v {
 				maps.Copy(result, entries(path.Join(key, k), child, depth-1))
 			}
 			return result
-		}
-		result[key] = v
-	case []any:
-		if depth > 0 {
+		case []any:
 			for _, element := range v {
 				result[path.Join(key, fmt.Sprint(element))] = element
 			}
-			return result
+		default:
+			result[key] = v
 		}
-		result[key] = v
-	default:
-		result[key] = v
+		return result
 	}
+
+	result[key] = value
 
 	return result
 }
