@@ -463,11 +463,11 @@ func TestMapPath_Apply(t *testing.T) {
 		"viewers": {Name: "carol", Level: 2},
 	})
 
-	ops, err := m.Apply(ctx, cli, json.RawMessage(`{
-        "admins": {"level": 3},
-        "guests": {"name": "dave", "level": 4},
-        "viewers": null
-    }`))
+	ops, err := m.Apply(ctx, cli, []paths.Change{
+		{Type: paths.Add, Key: m.Key("admins").Key(), Value: json.RawMessage(`{"name": "alice", "level": 3}`)},
+		{Type: paths.Add, Key: m.Key("guests").Key(), Value: json.RawMessage(`{"name": "dave", "level": 4}`)},
+		{Type: paths.Remove, Key: m.Key("viewers").Key(), Value: json.RawMessage(`{"name": "carol", "level": 2}`)},
+	})
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -504,13 +504,17 @@ func TestMapPath_Apply(t *testing.T) {
 		t.Errorf("List() still contains deleted key %q", "viewers")
 	}
 
-	ops, err = m.Apply(ctx, cli, json.RawMessage("null"))
+	ops, err = m.Apply(ctx, cli, []paths.Change{
+		{Type: paths.Remove, Key: m.Key("admins").Key()},
+		{Type: paths.Remove, Key: m.Key("guests").Key()},
+	})
 	if err != nil {
 		t.Fatalf("Apply(null) error = %v", err)
+		t.Fatalf("Apply(remove all) error = %v", err)
 	}
 
-	if len(ops) != 1 {
-		t.Fatalf("Apply(null) returned %d ops, want 1", len(ops))
+	if len(ops) != 2 {
+		t.Fatalf("Apply(null) returned %d ops, want 2", len(ops))
 	}
 
 	if _, err := cli.Txn(ctx).Then(ops...).Commit(); err != nil {

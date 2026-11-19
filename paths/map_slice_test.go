@@ -220,22 +220,19 @@ func TestMapSlicePathApply(t *testing.T) {
 	put("things/group2/item9", mapSliceTestValue{Name: "remove-a", Count: 9})
 	put("things/group2/item10", mapSliceTestValue{Name: "remove-b", Count: 10})
 
-	patch := json.RawMessage(`{
-        "group1": {
-            "item1": { "count": 2 },
-            "item2": { "name": "new", "count": 7 },
-            "item3": null
-        },
-        "group2": null
-    }`)
-
-	ops, err := m.Apply(ctx, cli, patch)
+	ops, err := m.Apply(ctx, cli, []paths.Change{
+		{Type: paths.Add, Key: m.Key("group1").Key("item1").Key(), Value: json.RawMessage(`{"name": "before", "count": 2}`)},
+		{Type: paths.Add, Key: m.Key("group1").Key("item2").Key(), Value: json.RawMessage(`{"name": "new", "count": 7}`)},
+		{Type: paths.Remove, Key: m.Key("group1").Key("item3").Key()},
+		{Type: paths.Remove, Key: m.Key("group2").Key("item9").Key()},
+		{Type: paths.Remove, Key: m.Key("group2").Key("item10").Key()},
+	})
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 
-	if len(ops) != 4 {
-		t.Fatalf("Apply() returned %d ops, want 4", len(ops))
+	if len(ops) != 5 {
+		t.Fatalf("Apply() returned %d ops, want 5", len(ops))
 	}
 
 	if _, err := cli.Txn(ctx).Then(ops...).Commit(); err != nil {

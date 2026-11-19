@@ -2,7 +2,6 @@ package paths
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -183,87 +182,6 @@ func (m MapPath[V]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watc
 		}))
 }
 
-func (m MapPath[V]) Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error) {
-
-	if string(change) == "null" {
-		return []clientv3.Op{
-			clientv3.OpDelete(m.prefix, clientv3.WithPrefix()),
-		}, nil
-	}
-
-	var entries map[string]json.RawMessage
-	if err := json.Unmarshal(change, &entries); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map patch for prefix %q: %w", m.prefix, err)
-	}
-
-	ops := make([]clientv3.Op, 0, len(entries))
-
-	mergeGetOps := make([]clientv3.Op, 0, len(entries))
-
-	type merge struct {
-		key  string
-		data json.RawMessage
-	}
-
-	mergeData := make([]merge, 0, len(entries))
-	for k, v := range entries {
-		etcdKey := Join(m.prefix, k)
-
-		// null value means delete this key
-		if string(v) == "null" {
-			ops = append(ops, clientv3.OpDelete(etcdKey))
-			continue
-		}
-
-		if m.presenceOnly {
-			ops = append(ops, clientv3.OpPut(etcdKey, ""))
-			continue
-		}
-
-		mergeGetOps = append(mergeGetOps, clientv3.OpGet(etcdKey))
-		mergeData = append(mergeData, merge{key: etcdKey, data: v})
-	}
-
-	if len(mergeGetOps) == 0 {
-		return ops, nil
-	}
-
-	resp, err := cli.Txn(ctx).Then(mergeGetOps...).Commit()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get previous values to merge: %w", err)
-	}
-
-	for i, response := range resp.Responses {
-
-		if response.GetResponseRange() == nil {
-			return nil, fmt.Errorf("failed to get the same number of responses for merges than issued")
-		}
-
-		var value V
-
-		// this is a new key, just apply the merge directly
-		if len(response.GetResponseRange().Kvs) > 0 {
-			kv := response.GetResponseRange().Kvs[0]
-
-			err := m.codec.DecodeToPointer(kv.Value, &value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid initial type for key %q: %w", mergeData[i].key, err)
-			}
-		}
-
-		// this is only valid if the codec supports partial updates like the json standard library
-		// this is a limitation of this implementation
-		err = m.codec.DecodeToPointer(mergeData[i].data, &value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to apply merged for key %q: %w", mergeData[i].key, err)
-		}
-
-		merged, err := m.codec.Encode(value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encode merged value for key %q: %w", mergeData[i].key, err)
-		}
-
-		ops = append(ops, clientv3.OpPut(mergeData[i].key, string(merged)))
-	}
-	return ops, nil
+func (m MapPath[V]) Apply(ctx context.Context, cli *clientv3.Client, change []Change) ([]clientv3.Op, error) {
+	return applyChanges[V](m.codec, m.presenceOnly, change)
 }

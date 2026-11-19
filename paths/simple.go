@@ -2,7 +2,6 @@ package paths
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -209,38 +208,8 @@ func (p Path[T]) Watch(ctx context.Context, cli *clientv3.Client) *watch.Watcher
 		}))
 }
 
-func (p Path[T]) Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error) {
-
-	// null merge patch means delete
-	if string(change) == "null" {
-		return []clientv3.Op{
-			clientv3.OpDelete(p.key),
-		}, nil
-	}
-
-	if change == nil {
-		return nil, fmt.Errorf("nil change provided for key %q", p.key)
-	}
-
-	// Fetch current value to merge onto
-	current, err := p.Get(ctx, cli)
-	if err != nil && !errors.Is(err, ErrNotFound) {
-		return nil, fmt.Errorf("failed to get current value for key %q: %w", p.key, err)
-	}
-
-	// Validate merged result decodes to T
-	if err := p.codec.DecodeToPointer(change, &current); err != nil {
-		return nil, fmt.Errorf("merged result is invalid type for key %q: %w", p.key, err)
-	}
-
-	merged, err := p.codec.Encode(current)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode merged result for key %q: %w", p.key, err)
-	}
-
-	return []clientv3.Op{
-		clientv3.OpPut(p.key, string(merged)),
-	}, nil
+func (p Path[T]) Apply(ctx context.Context, cli *clientv3.Client, change []Change) ([]clientv3.Op, error) {
+	return applyChanges[T](p.codec, false, change)
 }
 
 func (p Path[T]) Missing() clientv3.Cmp {

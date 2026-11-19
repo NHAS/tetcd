@@ -6,19 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"path"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/NHAS/tetcd/paths"
 	"github.com/NHAS/tetcd/tree/kind"
-	jsonpatch "github.com/evanphx/json-patch"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type treeNode struct {
 	kind     kind.Kind
-	applier  Applier // non-nil for KindSimple and KindMap
+	applier  Applier // non-nil for KindSimple, KindMap and KindMapSlice
 	children map[string]*treeNode
 }
 
@@ -51,7 +53,7 @@ func (t *treeNode) find(path string) Applier {
 
 			_, pathType := cur.applier.Details()
 			switch pathType {
-			case kind.Simple, kind.Map, kind.Ignored:
+			case kind.Simple, kind.Map, kind.MapSlice, kind.Ignored:
 				return cur
 			case kind.Intermediate:
 				if prev != nil && prev.kind == kind.Simple {
@@ -69,7 +71,7 @@ func (t *treeNode) find(path string) Applier {
 
 		next, ok := cur.children[seg]
 		if !ok {
-			if target != nil && target.kind == kind.Map {
+			if target != nil && (target.kind == kind.Map || target.kind == kind.MapSlice) {
 				break
 			}
 			return nil
@@ -117,8 +119,9 @@ func NewTreeWithPrefix[T any](prefix, topLevelStruct string) *Tree[T] {
 	}
 }
 
+// Applier turns the planned changes under its path into etcd operations.
 type Applier interface {
-	Apply(ctx context.Context, cli *clientv3.Client, change json.RawMessage) ([]clientv3.Op, error)
+	Apply(ctx context.Context, cli *clientv3.Client, changes []paths.Change) ([]clientv3.Op, error)
 	Details() (path string, pathType kind.Kind)
 }
 
@@ -190,115 +193,190 @@ func (p *Plan) Changed() bool {
 	return len(p.ops) > 0
 }
 
-func (p *Plan) KeysChanged() []string {
-	result := []string{}
-
+// Changes lists every key that will be added or removed, along with its value.
+func (p *Plan) Changes() []paths.Change {
+	var result []paths.Change
 	for _, op := range p.ops {
-		result = append(result, op.key)
+		result = append(result, op.changes...)
 	}
 	return result
 }
 
-type Op struct {
-	action opsFunc
+func (p *Plan) KeysChanged() []string {
+	result := []string{}
 
-	ChangeItem
+	for _, change := range p.Changes() {
+		result = append(result, change.Key)
+	}
+	return result
 }
 
-type ChangeItem struct {
-	key    string
-	change json.RawMessage
+// Op is everything one applier has to do.
+type Op struct {
+	action  opsFunc
+	changes []paths.Change
+}
+
+// how many levels of keys sit below an applier's path before a value is stored whole
+var storedDepth = map[kind.Kind]int{
+	kind.Simple:   0,
+	kind.Map:      1,
+	kind.MapSlice: 2,
 }
 
 func (t *Tree[T]) Plan(ctx context.Context, originalJSON, modifiedJSON []byte) (Plan, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
+	if err := ctx.Err(); err != nil {
+		return Plan{}, fmt.Errorf("cancelled by context: %w", err)
+	}
+
 	if len(bytes.TrimSpace(originalJSON)) == 0 {
 		originalJSON = []byte("{}")
 	}
 
 	var validate T
-
-	dec := json.NewDecoder(bytes.NewReader(modifiedJSON))
-	if err := dec.Decode(&validate); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(modifiedJSON)).Decode(&validate); err != nil {
 		return Plan{}, fmt.Errorf("failed to decode new config: %w", err)
 	}
 
-	patchBytes, err := jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
+	before, err := decode(originalJSON)
 	if err != nil {
-		return Plan{}, fmt.Errorf("failed to create merge patch: %w", err)
+		return Plan{}, fmt.Errorf("failed to decode original config: %w", err)
 	}
 
-	// the top level elements that have been changed
-	var patch map[string]json.RawMessage
-	if err := json.Unmarshal(patchBytes, &patch); err != nil {
-		return Plan{}, fmt.Errorf("failed to unmarshal merge patch: %w", err)
+	after, err := decode(modifiedJSON)
+	if err != nil {
+		return Plan{}, fmt.Errorf("failed to decode new config: %w", err)
 	}
 
-	queue := make([]ChangeItem, 0, len(patch))
-	for k, v := range patch {
-		queue = append(queue, ChangeItem{key: k, change: v})
+	ops, err := t.diff(path.Join(t.prefix, t.topLevelStruct), before, after)
+	return Plan{ops: ops}, err
+}
+
+// diff returns the ops that take the config at key from before to after. Structs are gone through
+// until an applier is reached, which owns everything below it.
+func (t *Tree[T]) diff(key string, before, after any) ([]Op, error) {
+	if before == nil && after == nil {
+		return nil, nil
 	}
 
-	var plan Plan
-	for len(queue) > 0 {
-
-		if err := ctx.Err(); err != nil {
-			return Plan{}, fmt.Errorf("cancelled by context: %w", err)
+	if applier := t.root.find(key); applier != nil {
+		_, applierKind := applier.Details()
+		if applierKind == kind.Ignored {
+			return nil, nil
 		}
 
-		current := queue[0]
-		queue = queue[1:]
-
-		var fullKey string
-		if t.prefix != "" {
-			fullKey = t.prefix
+		depth := storedDepth[applierKind]
+		changes, err := compare(entries(key, before, depth), entries(key, after, depth))
+		if err != nil || len(changes) == 0 {
+			return nil, err
 		}
-		fullKey = path.Join(fullKey, t.topLevelStruct, current.key)
-		applier := t.root.find(fullKey)
-		if applier != nil {
-			if _, applierKind := applier.Details(); applierKind == kind.Ignored {
-				continue
-			}
 
-			// if we've found a match, add the applier and skip trying to decode
-			// this means we collect map types but ignore structs
-			plan.ops = append(plan.ops, Op{
-				action: func(ctx context.Context, cli *clientv3.Client) ([]clientv3.Op, error) {
-					return applier.Apply(ctx, cli, current.change)
-				},
-				key:    fullKey,
-				change: current.change,
-			})
+		return []Op{{
+			changes: changes,
+			action: func(ctx context.Context, cli *clientv3.Client) ([]clientv3.Op, error) {
+				return applier.Apply(ctx, cli, changes)
+			},
+		}}, nil
+	}
+
+	beforeFields, beforeOk := before.(map[string]any)
+	afterFields, afterOk := after.(map[string]any)
+	if (before != nil && !beforeOk) || (after != nil && !afterOk) {
+		return nil, fmt.Errorf("key: %q has no matching applier", key)
+	}
+
+	var ops []Op
+	for _, name := range union(beforeFields, afterFields) {
+		fieldOps, err := t.diff(path.Join(key, name), beforeFields[name], afterFields[name])
+		if err != nil {
+			return nil, err
+		}
+
+		ops = append(ops, fieldOps...)
+	}
+
+	return ops, nil
+}
+
+// compare lists what takes the stored keys in before to those in after. A changed key is put over
+// what was there, so it is an Add.
+func compare(before, after map[string]any) ([]paths.Change, error) {
+	var result []paths.Change
+	for _, key := range union(before, after) {
+		old, existed := before[key]
+		current, exists := after[key]
+		if existed && exists && reflect.DeepEqual(old, current) {
 			continue
 		}
 
-		// Try to decode as nested object
-		// map types should be caught by the t.root.find above
-		var nested map[string]json.RawMessage
-		if err := json.Unmarshal(current.change, &nested); err == nil {
-
-			// json merge can result in items being nil/null when removed
-			if nested == nil {
-				return Plan{}, fmt.Errorf("path %q was marked as deleted, however no matcher applies", fullKey)
-			}
-
-			// if we're a nested item, and not matching a map then continue adding items to the queue
-			for k, v := range nested {
-				queue = append(queue,
-					ChangeItem{
-						key:    path.Join(current.key, k),
-						change: v,
-					},
-				)
-			}
-
-			continue
+		change, value := paths.Change{Type: paths.Add, Key: key}, current
+		if !exists {
+			change.Type, value = paths.Remove, old
 		}
 
-		return Plan{}, fmt.Errorf("key: %q has no matching applier", fullKey)
+		var err error
+		if change.Value, err = json.Marshal(value); err != nil {
+			return nil, fmt.Errorf("failed to encode value of %q: %w", key, err)
+		}
+
+		result = append(result, change)
 	}
 
-	return plan, nil
+	return result, nil
+}
+
+// entries lists the values stored under key. Maps and arrays are split depth times, an array being a
+// set whose elements are keys, and anything below that is stored whole.
+func entries(key string, value any, depth int) map[string]any {
+	result := map[string]any{}
+
+	switch v := value.(type) {
+	case nil:
+	case map[string]any:
+		if depth > 0 {
+			for k, child := range v {
+				maps.Copy(result, entries(path.Join(key, k), child, depth-1))
+			}
+			return result
+		}
+		result[key] = v
+	case []any:
+		if depth > 0 {
+			for _, element := range v {
+				result[path.Join(key, fmt.Sprint(element))] = element
+			}
+			return result
+		}
+		result[key] = v
+	default:
+		result[key] = v
+	}
+
+	return result
+}
+
+// union is the keys of both maps
+func union[V any](a, b map[string]V) []string {
+	all := map[string]struct{}{}
+	for k := range a {
+		all[k] = struct{}{}
+	}
+	for k := range b {
+		all[k] = struct{}{}
+	}
+
+	return slices.Collect(maps.Keys(all))
+}
+
+// decode reads a config, keeping numbers as written
+func decode(config []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(config))
+	dec.UseNumber()
+
+	var value any
+	err := dec.Decode(&value)
+	return value, err
 }
