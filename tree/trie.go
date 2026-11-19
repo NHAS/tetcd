@@ -301,25 +301,31 @@ func (t *Tree[T]) diff(key string, before, after any) ([]Op, error) {
 	return ops, nil
 }
 
-// compare lists what takes the stored keys in before to those in after. A changed key is put over
-// what was there, so it is an Add.
+// compare detemine what additions or removals have taken place within a map
 func compare(before, after map[string]any) ([]paths.Change, error) {
 	var result []paths.Change
 	for _, key := range union(before, after) {
-		old, existed := before[key]
+		previous, existed := before[key]
 		current, exists := after[key]
-		if existed && exists && reflect.DeepEqual(old, current) {
+
+		// if the key & value is unchanged just skip it
+		if existed && exists && reflect.DeepEqual(previous, current) {
 			continue
 		}
 
-		change, value := paths.Change{Type: paths.Add, Key: key}, current
-		if !exists {
-			change.Type, value = paths.Remove, old
+		change := paths.Change{
+			Type: paths.Remove,
+			Key:  key,
 		}
 
-		var err error
-		if change.Value, err = json.Marshal(value); err != nil {
-			return nil, fmt.Errorf("failed to encode value of %q: %w", key, err)
+		//if the key is new we add it
+		if exists {
+			change.Type = paths.Add
+
+			var err error
+			if change.Value, err = json.Marshal(current); err != nil {
+				return nil, fmt.Errorf("failed to encode value of %q when creating addition op in compare: %w", key, err)
+			}
 		}
 
 		result = append(result, change)
@@ -358,7 +364,7 @@ func entries(key string, value any, depth int) map[string]any {
 	return result
 }
 
-// union is the keys of both maps
+// Take a union of the keys for both maps
 func union[V any](a, b map[string]V) []string {
 	all := map[string]struct{}{}
 	for k := range a {

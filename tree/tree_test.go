@@ -1,8 +1,9 @@
-package tree_test
+package tree
 
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/NHAS/tetcd/codecs"
 	"github.com/NHAS/tetcd/paths"
 	"github.com/NHAS/tetcd/testhelpers"
-	tetree "github.com/NHAS/tetcd/tree"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -64,7 +64,7 @@ type trieMemberValue struct {
 
 // testTree registers an applier for each way a value can be stored
 type testTree struct {
-	*tetree.Tree[trieTestConfig]
+	*Tree[trieTestConfig]
 
 	simple     paths.Path[string]
 	groups     paths.MapPath[trieGroupValue]
@@ -81,7 +81,7 @@ type testTree struct {
 
 func newTestTree() testTree {
 	tt := testTree{
-		Tree:       tetree.NewTree[trieTestConfig](""),
+		Tree:       NewTree[trieTestConfig](""),
 		simple:     paths.NewPath("Simple", codecs.NewJsonCodec[string]()),
 		groups:     paths.NewMapPath("wag/Acls/Groups", codecs.NewJsonCodec[trieGroupValue](), false),
 		members:    paths.NewMapSlicePath("wag/Acls/Members", codecs.NewJsonCodec[trieMemberValue](), false),
@@ -122,20 +122,20 @@ func TestTree_Plan_ReturnsAddsAndRemoves(t *testing.T) {
 		added("Simple", `"no"`),
 
 		added("wag/Acls/Groups/admins", `{"name": "alice", "level": 2}`),
-		removed("wag/Acls/Groups/viewers", `{"name": "carol", "level": 2}`),
+		removed("wag/Acls/Groups/viewers"),
 		added("wag/Acls/Groups/guests", `{"name": "dave", "level": 3}`),
 
 		added("wag/Acls/Members/team1/alice", `{"name": "alice", "weight": 10}`),
-		removed("wag/Acls/Members/team1/bob", `{"name": "bob", "weight": 2}`),
+		removed("wag/Acls/Members/team1/bob"),
 		added("wag/Acls/Members/team1/carol", `{"name": "carol", "weight": 4}`),
-		removed("wag/Acls/Members/team2/eve", `{"name": "eve", "weight": 3}`),
+		removed("wag/Acls/Members/team2/eve"),
 		added("wag/Acls/Members/team3/dan", `{"name": "dan", "weight": 5}`),
 
 		// each element is its own key, so "c" and "a" are left alone, and what happened to their position doesn't matter
-		removed("Tags/b", `"b"`),
+		removed("Tags/b"),
 		added("Tags/d", `"d"`),
 
-		removed("Sets/team1/a", `"a"`),
+		removed("Sets/team1/a"),
 		added("Sets/team1/c", `"c"`),
 		added("Sets/team2/z", `"z"`),
 
@@ -144,7 +144,7 @@ func TestTree_Plan_ReturnsAddsAndRemoves(t *testing.T) {
 
 		// below the top level, behaving the same
 		added("deep/inner/Name", `"n2"`),
-		removed("deep/inner/Tags/p", `"p"`),
+		removed("deep/inner/Tags/p"),
 		added("deep/inner/Tags/r", `"r"`),
 		added("deep/inner/Sets/s1/n", `"n"`),
 		added("deep/inner/Compressed", `["k1"]`),
@@ -191,10 +191,10 @@ func TestTree_Plan_RemovedArrays_RemoveTheirKeys(t *testing.T) {
 	}
 
 	assertChanges(t, plan.Changes(),
-		removed("Tags/a", `"a"`),
-		removed("Tags/b", `"b"`),
-		removed("Sets/t/c", `"c"`),
-		removed("Compressed", `["x"]`),
+		removed("Tags/a"),
+		removed("Tags/b"),
+		removed("Sets/t/c"),
+		removed("Compressed"),
 	)
 }
 
@@ -230,10 +230,10 @@ func TestTree_Plan_NestedStructs(t *testing.T) {
 	}{
 		{"struct added whole", `{}`, full, everything},
 		{"struct removed whole", full, `{}`, []wantChange{
-			removed("deep/inner/Name", `"n"`),
-			removed("deep/inner/Tags/a", `"a"`),
-			removed("deep/inner/Sets/s/b", `"b"`),
-			removed("deep/inner/Compressed", `["c"]`),
+			removed("deep/inner/Name"),
+			removed("deep/inner/Tags/a"),
+			removed("deep/inner/Sets/s/b"),
+			removed("deep/inner/Compressed"),
 		}},
 		{"inner struct added to an existing one", `{"deep":{}}`, full, everything},
 		{"fields added to an existing struct", `{"deep":{"inner":{"Name":"n"}}}`, full, []wantChange{
@@ -280,6 +280,99 @@ func TestTree_Plan_UnknownKey_Errors(t *testing.T) {
 	if _, err := tt.Plan(context.Background(), []byte(`{}`), []byte(`{"Simple":"yes","Unknown":1}`)); err == nil {
 		t.Fatal("Plan() should fail for a key that no applier matches")
 	}
+}
+
+func TestCompare(t *testing.T) {
+	add := func(key, value string) paths.Change {
+		return paths.Change{Type: paths.Add, Key: key, Value: json.RawMessage(value)}
+	}
+	remove := func(key, value string) paths.Change {
+		return paths.Change{Type: paths.Remove, Key: key}
+	}
+
+	describe := func(changes []paths.Change) string {
+		parts := make([]string, 0, len(changes))
+		for _, c := range changes {
+			sign := "remove "
+			if c.Type == paths.Add {
+				sign = "add "
+			}
+			parts = append(parts, sign+c.Key+"="+string(c.Value))
+		}
+
+		return "[" + strings.Join(parts, " ") + "]"
+	}
+
+	tests := []struct {
+		name          string
+		before, after map[string]any
+		want          []paths.Change
+	}{
+		{"both nil", nil, nil, nil},
+		{"both empty", map[string]any{}, map[string]any{}, nil},
+		{"nil before is empty", nil, map[string]any{"a": "x"}, []paths.Change{add("a", `"x"`)}},
+		{"nil after is empty", map[string]any{"a": "x"}, nil, []paths.Change{remove("a", `"x"`)}},
+
+		{"key added", map[string]any{}, map[string]any{"a": "x"}, []paths.Change{add("a", `"x"`)}},
+		{"key removed carries the old value", map[string]any{"a": "x"}, map[string]any{}, []paths.Change{remove("a", `"x"`)}},
+		{"key changed is one add of the new value", map[string]any{"a": "x"}, map[string]any{"a": "y"}, []paths.Change{add("a", `"y"`)}},
+		{"key unchanged", map[string]any{"a": "x"}, map[string]any{"a": "x"}, nil},
+
+		{"unchanged map value", map[string]any{"a": map[string]any{"b": "c"}}, map[string]any{"a": map[string]any{"b": "c"}}, nil},
+		{"unchanged array value", map[string]any{"a": []any{"x", "y"}}, map[string]any{"a": []any{"x", "y"}}, nil},
+		{"changed map value is put whole", map[string]any{"a": map[string]any{"b": "c", "d": "e"}}, map[string]any{"a": map[string]any{"b": "c", "d": "f"}},
+			[]paths.Change{add("a", `{"b":"c","d":"f"}`)}},
+		{"changed array value is put whole", map[string]any{"a": []any{"x", "y"}}, map[string]any{"a": []any{"x", "z"}},
+			[]paths.Change{add("a", `["x","z"]`)}},
+		{"reordered array value is a change", map[string]any{"a": []any{"x", "y"}}, map[string]any{"a": []any{"y", "x"}},
+			[]paths.Change{add("a", `["y","x"]`)}},
+
+		{"numbers are written as they were read", map[string]any{"a": json.Number("1")}, map[string]any{"a": json.Number("9007199254740993")},
+			[]paths.Change{add("a", `9007199254740993`)}},
+		{"value of another type is a change", map[string]any{"a": "1"}, map[string]any{"a": json.Number("1")}, []paths.Change{add("a", `1`)}},
+
+		{"keys with a path in them are left as they are", map[string]any{"a/b": "x"}, map[string]any{"a/b": "y", "c/d/e": "z"},
+			[]paths.Change{add("a/b", `"y"`), add("c/d/e", `"z"`)}},
+
+		{
+			"adds removes and changes together",
+			map[string]any{"same": "s", "changed": "old", "removed": "gone"},
+			map[string]any{"same": "s", "changed": "new", "added": "here"},
+			[]paths.Change{add("added", `"here"`), add("changed", `"new"`), remove("removed", `"gone"`)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := compare(tt.before, tt.after)
+			if err != nil {
+				t.Fatalf("compare() error = %v", err)
+			}
+
+			// the order of changes means nothing
+			byKey := func(a, b paths.Change) int { return strings.Compare(a.Key, b.Key) }
+			slices.SortFunc(got, byKey)
+			slices.SortFunc(tt.want, byKey)
+
+			same := func(a, b paths.Change) bool {
+				return a.Type == b.Type && a.Key == b.Key && string(a.Value) == string(b.Value)
+			}
+
+			if !slices.EqualFunc(got, tt.want, same) {
+				t.Fatalf("compare() = got %s\nwant       %s", describe(got), describe(tt.want))
+			}
+		})
+	}
+
+	t.Run("value that can't be encoded fails", func(t *testing.T) {
+		if _, err := compare(map[string]any{}, map[string]any{"a": math.NaN()}); err == nil {
+			t.Fatal("compare() should fail when a value can't be encoded as JSON")
+		}
+
+		if _, err := compare(map[string]any{"a": math.Inf(1)}, map[string]any{}); err != nil {
+			t.Fatal("compare() shouldnt fail when a removed value can't be encoded as JSON")
+		}
+	})
 }
 
 func TestTree_Apply_UpdatesStore(t *testing.T) {
@@ -470,8 +563,8 @@ type wantChange struct {
 	Value string
 }
 
-func added(key, value string) wantChange   { return wantChange{paths.Add, key, value} }
-func removed(key, value string) wantChange { return wantChange{paths.Remove, key, value} }
+func added(key, value string) wantChange { return wantChange{paths.Add, key, value} }
+func removed(key string) wantChange      { return wantChange{paths.Remove, key, ""} }
 
 // assertChanges checks the changes in a plan, in any order
 func assertChanges(t *testing.T, got []paths.Change, want ...wantChange) {
@@ -490,7 +583,9 @@ func assertChanges(t *testing.T, got []paths.Change, want ...wantChange) {
 			t.Fatalf("change %d = %v %q, want %v %q", i, got[i].Type, got[i].Key, want[i].Type, want[i].Key)
 		}
 
-		assertJSONEqual(t, got[i].Value, want[i].Value)
+		if want[i].Type == paths.Add {
+			assertJSONEqual(t, got[i].Value, want[i].Value)
+		}
 	}
 }
 
