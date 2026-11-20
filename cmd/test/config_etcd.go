@@ -509,5 +509,5 @@ func init() {
 	ConfigDiffer.Register(Config.TLS.Yar.Created())
 	ConfigDiffer.Register(Config.TLS.Yar.Document())
 	ConfigDiffer.Register(Config.Tags())
-	ConfigDiffer.Ignore("Config/ignored", "Config/SkippedField", "Config/Server/IgnoredSubSecField", "Config/Server/IgnoredSubSecField", "Config/TLS/Yar/IgnoredSubThirdNoEmbedField", "Config/TLS/Yar/IgnoredSubThirdNoEmbedField", "Config/TLS/Yar/Created/wall", "Config/TLS/Yar/Created/ext", "Config/TLS/Yar/Created/loc")
+	ConfigDiffer.Ignore("Config/Server/IgnoredSubThirdField", "Config/Server/IgnoredSubSecField", "Config/TLS/Yar/IgnoredSubThirdNoEmbedField", "Config/TLS/Yar/Created/ext", "Config/TLS/Yar/Created/loc", "Config/TLS/Yar/Created/wall", "Config/ignored", "Config/SkippedField")
 }

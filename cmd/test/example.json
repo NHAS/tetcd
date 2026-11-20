@@ -1,0 +1,13 @@
+{
+
+    "Name": "example",
+    "Server": {
+        "Host": "127.0.0.1",
+        "Port": 8080
+    },
+    "Labels": {
+        "env": "dev",
+        "team": "platform"
+    },
+    "Methods1": ["GET", "POST"]
+}

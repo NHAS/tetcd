@@ -155,6 +155,10 @@ func (t *Tree[T]) Print() {
 func printLayer(before string, item *treeNode) {
 	for name, i := range item.children {
 		next := before + "/" + name
+
+		if len(before) == 0 {
+			next = name
+		}
 		log.Println(next)
 		printLayer(next, i)
 	}

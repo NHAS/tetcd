@@ -206,6 +206,7 @@ func buildNode(name string, t types.Type, compress bool) (*node, error) {
 
 			if field.Anonymous() {
 				maps.Copy(result.children, child.children)
+				maps.Copy(result.ignored, child.ignored)
 				continue
 			}
 
@@ -267,22 +268,22 @@ func sortedKeys(m map[string]*node) []string {
 	return keys
 }
 
-func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) ([]jen.Code, []string) {
+func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) ([]jen.Code, map[string]bool) {
 	var (
 		result       []jen.Code
 		structFields []jen.Code
 
-		ignoredPaths []string
+		ignoredPaths = map[string]bool{}
 	)
 	for ignored := range root.ignored {
-		ignoredPaths = append(ignoredPaths, filepath.Join(currentPath, root.name, ignored))
+		ignoredPaths[filepath.Join(currentPath, root.name, ignored)] = true
 	}
 
 	// generates the auto type fields
 	for _, name := range sortedKeys(root.children) {
 		child := root.children[name]
 		for ignored := range child.ignored {
-			ignoredPaths = append(ignoredPaths, filepath.Join(currentPath, root.name, child.name, ignored))
+			ignoredPaths[filepath.Join(currentPath, root.name, child.name, ignored)] = true
 		}
 
 		if len(child.children) == 0 {
@@ -290,7 +291,9 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) ([]jen.Co
 		}
 
 		statements, ignored := buildStructs(child, path.Join(currentPath, root.name), pathsPkg, codecsPkg)
-		ignoredPaths = append(ignoredPaths, ignored...)
+		for k := range ignored {
+			ignoredPaths[k] = true
+		}
 
 		result = append(result, statements...)
 
@@ -342,7 +345,7 @@ func buildStructs(root *node, currentPath, pathsPkg, codecsPkg string) ([]jen.Co
 }
 
 // buildInitBody generates Differ.Register(...) calls for every leaf in the tree.
-func buildInitBody(root *node, ignoredPaths []string) []jen.Code {
+func buildInitBody(root *node, ignoredPaths map[string]bool) []jen.Code {
 	var stmts []jen.Code
 	leaves := collectAllLeaves(root, "")
 	for _, lp := range leaves {
@@ -364,7 +367,7 @@ func buildInitBody(root *node, ignoredPaths []string) []jen.Code {
 	}
 
 	lits := []jen.Code{}
-	for _, path := range ignoredPaths {
+	for path := range ignoredPaths {
 		lits = append(lits, jen.Lit(path))
 	}
 
