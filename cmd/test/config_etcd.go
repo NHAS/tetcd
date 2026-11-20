@@ -228,9 +228,9 @@ func (autoTypeTLSNestedInTls) Fronk() paths.Path[string] {
 	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Fronk", codecs.NewJsonCodec[string]())
 }
 
-// Number() KV should contain type int
-func (autoTypeTLSNestedInTls) Number() paths.Path[int] {
-	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Number", codecs.NewJsonCodec[int]())
+// Number() KV should contain type *int
+func (autoTypeTLSNestedInTls) Number() paths.Path[*int] {
+	return paths.NewPath("wagtest/Config/TLS/NestedInTls/Number", codecs.NewJsonCodec[*int]())
 }
 
 // Something() KV should contain type string
@@ -239,7 +239,7 @@ func (autoTypeTLSNestedInTls) Something() paths.Path[string] {
 }
 
 type resultTLSNestedInTls struct {
-	Number       int
+	Number       *int
 	Something    string
 	Fronk        string
 	DoublyNested struct {
@@ -287,9 +287,9 @@ func (a autoTypeTLSNestedInTls) Watch(ctx context.Context, cli *v3.Client) *watc
 
 type autoTypeTLSYar struct{}
 
-// Created() KV should contain type struct{wall uint64; ext int64; loc *time.Location}
-func (autoTypeTLSYar) Created() paths.Path[time.Time] {
-	return paths.NewPath("wagtest/Config/TLS/Yar/Created", codecs.NewJsonCodec[time.Time]())
+// Created() KV should contain type *time.Time
+func (autoTypeTLSYar) Created() paths.Path[*time.Time] {
+	return paths.NewPath("wagtest/Config/TLS/Yar/Created", codecs.NewJsonCodec[*time.Time]())
 }
 
 // Document() KV should contain type []byte
@@ -441,9 +441,9 @@ type autoTypeConfig struct {
 	TLS           autoTypeConfigTLS
 }
 
-// CompressMe() KV should contain type struct{Noot string; Toaster string}
-func (autoTypeConfig) CompressMe() paths.Path[config.CompressedStruct] {
-	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[config.CompressedStruct]())
+// CompressMe() KV should contain type *github.com/NHAS/tetcd/cmd/test/config.CompressedStruct
+func (autoTypeConfig) CompressMe() paths.Path[*config.CompressedStruct] {
+	return paths.NewPath("wagtest/Config/CompressMe", codecs.NewJsonCodec[*config.CompressedStruct]())
 }
 
 // EnumMap() is a map path with prefix wagtest/Config/EnumMap, value type github.com/NHAS/tetcd/cmd/test/config.Enum
@@ -509,5 +509,5 @@ func init() {
 	ConfigDiffer.Register(Config.TLS.Yar.Created())
 	ConfigDiffer.Register(Config.TLS.Yar.Document())
 	ConfigDiffer.Register(Config.Tags())
-	ConfigDiffer.Ignore("Config/Server/IgnoredSubThirdField", "Config/Server/IgnoredSubSecField", "Config/TLS/Yar/IgnoredSubThirdNoEmbedField", "Config/TLS/Yar/Created/ext", "Config/TLS/Yar/Created/loc", "Config/TLS/Yar/Created/wall", "Config/ignored", "Config/SkippedField")
+	ConfigDiffer.Ignore("Config/SkippedField", "Config/ignored", "Config/Server/IgnoredSubThirdField", "Config/Server/IgnoredSubSecField", "Config/TLS/Yar/IgnoredSubThirdNoEmbedField")
 }

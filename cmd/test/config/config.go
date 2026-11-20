@@ -34,7 +34,7 @@ type CompressedStruct struct {
 
 type Configuration struct {
 	Document []byte
-	Created  time.Time
+	Created  *time.Time
 
 	IgnoredSubThirdNoEmbedField string `tetcd:"-"`
 }
@@ -44,7 +44,7 @@ type TLSConfig struct {
 	KeyFile  string
 
 	NestedInTls struct {
-		Number    int
+		Number    *int
 		Something string
 		Fronk     string
 
@@ -84,7 +84,7 @@ type Config struct {
 		Methods []string
 	}
 
-	CompressMe CompressedStruct `tetcd:"compress"`
+	CompressMe *CompressedStruct `tetcd:"compress"`
 
 	Name   string
 	Labels map[string]string
