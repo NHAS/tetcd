@@ -7,7 +7,7 @@
     },
     "Labels": {
         "env": "dev",
-        "team": "platform"
+        "team": "aaaa"
     },
     "Methods1": ["GET", "POST"]
 }
