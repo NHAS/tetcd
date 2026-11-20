@@ -286,7 +286,7 @@ func TestCompare(t *testing.T) {
 	add := func(key, value string) paths.Change {
 		return paths.Change{Type: paths.Add, Key: key, Value: json.RawMessage(value)}
 	}
-	remove := func(key, value string) paths.Change {
+	remove := func(key string) paths.Change {
 		return paths.Change{Type: paths.Remove, Key: key}
 	}
 
@@ -311,10 +311,10 @@ func TestCompare(t *testing.T) {
 		{"both nil", nil, nil, nil},
 		{"both empty", map[string]any{}, map[string]any{}, nil},
 		{"nil before is empty", nil, map[string]any{"a": "x"}, []paths.Change{add("a", `"x"`)}},
-		{"nil after is empty", map[string]any{"a": "x"}, nil, []paths.Change{remove("a", `"x"`)}},
+		{"nil after is empty", map[string]any{"a": "x"}, nil, []paths.Change{remove("a")}},
 
 		{"key added", map[string]any{}, map[string]any{"a": "x"}, []paths.Change{add("a", `"x"`)}},
-		{"key removed carries the old value", map[string]any{"a": "x"}, map[string]any{}, []paths.Change{remove("a", `"x"`)}},
+		{"key removed carries the old value", map[string]any{"a": "x"}, map[string]any{}, []paths.Change{remove("a")}},
 		{"key changed is one add of the new value", map[string]any{"a": "x"}, map[string]any{"a": "y"}, []paths.Change{add("a", `"y"`)}},
 		{"key unchanged", map[string]any{"a": "x"}, map[string]any{"a": "x"}, nil},
 
@@ -338,7 +338,7 @@ func TestCompare(t *testing.T) {
 			"adds removes and changes together",
 			map[string]any{"same": "s", "changed": "old", "removed": "gone"},
 			map[string]any{"same": "s", "changed": "new", "added": "here"},
-			[]paths.Change{add("added", `"here"`), add("changed", `"new"`), remove("removed", `"gone"`)},
+			[]paths.Change{add("added", `"here"`), add("changed", `"new"`), remove("removed")},
 		},
 	}
 

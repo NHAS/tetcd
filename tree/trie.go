@@ -332,6 +332,17 @@ func compare(before, after map[string]any) ([]paths.Change, error) {
 			continue
 		}
 
+		if !exists {
+			if previous == nil {
+				continue
+			}
+			v := reflect.ValueOf(previous)
+
+			if !v.IsValid() || v.IsZero() {
+				continue
+			}
+		}
+
 		change := paths.Change{
 			Type: paths.Remove,
 			Key:  key,
